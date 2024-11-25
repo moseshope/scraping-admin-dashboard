@@ -11,7 +11,7 @@ import {
   MenuItem,
   Button,
 } from '@mui/material';
-import { DataGrid } from '@mui/x-data-grid';
+import { DataGrid, gridClasses } from '@mui/x-data-grid';
 import {
   AccountCircle,
   Refresh as RefreshIcon,
@@ -23,13 +23,13 @@ import { logout } from '../../../redux/slices/authSlice';
 import { createProject, fetchProjects, selectProjects, selectProjectsLoading } from '../../../redux/slices/projectsSlice';
 import NewProjectModal from './NewProjectModal';
 
-const columns = [
-  { field: 'id', headerName: 'ID', width: 90 },
-  { field: 'name', headerName: 'Project Name', width: 200 },
-  { field: 'status', headerName: 'Status', width: 130 },
-  { field: 'lastRun', headerName: 'Last Run', width: 130 },
-  { field: 'success', headerName: 'Successful Runs', width: 150 },
-  { field: 'failed', headerName: 'Failed Runs', width: 130 },
+// Sample data
+const rows = [
+  { id: 1, name: 'Project 1', status: 'Active', lastRun: '2024-02-20', success: 15, failed: 2 },
+  { id: 2, name: 'Project 2', status: 'Paused', lastRun: '2024-02-19', success: 25, failed: 1 },
+  { id: 3, name: 'Project 3', status: 'Active', lastRun: '2024-02-18', success: 10, failed: 0 },
+  { id: 4, name: 'Project 4', status: 'Completed', lastRun: '2024-02-17', success: 30, failed: 3 },
+  { id: 5, name: 'Project 5', status: 'Active', lastRun: '2024-02-16', success: 20, failed: 1 },
 ];
 
 const Dashboard = () => {
@@ -89,6 +89,19 @@ const Dashboard = () => {
       // You might want to show an error message to the user here
     }
   };
+
+  const handleRowClick = (params) => {
+    navigate(`/dashboard/projects/${params.row.id}`);
+  };
+
+  const columns = [
+    { field: 'id', headerName: 'ID', width: 90 },
+    { field: 'name', headerName: 'Project Name', width: 200 },
+    { field: 'status', headerName: 'Status', width: 130 },
+    { field: 'lastRun', headerName: 'Last Run', width: 130 },
+    { field: 'success', headerName: 'Successful Runs', width: 150 },
+    { field: 'failed', headerName: 'Failed Runs', width: 130 },
+  ];
 
   return (
     <Box sx={{ flexGrow: 1 }}>
@@ -151,15 +164,24 @@ const Dashboard = () => {
           
           <div style={{ height: 400, width: '100%' }}>
             <DataGrid
-              rows={projects}
+              rows={projects.length > 0 ? projects : rows}
               columns={columns}
               pageSize={5}
               rowsPerPageOptions={[5]}
               checkboxSelection
               disableSelectionOnClick
               loading={loading}
+              onRowClick={handleRowClick}
               onSelectionModelChange={(newSelection) => {
                 setSelectedRows(newSelection);
+              }}
+              sx={{
+                [`& .${gridClasses.row}`]: {
+                  cursor: 'pointer',
+                  '&:hover': {
+                    backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                  },
+                },
               }}
             />
           </div>
