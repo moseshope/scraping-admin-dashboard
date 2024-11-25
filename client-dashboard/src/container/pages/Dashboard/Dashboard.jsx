@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -18,17 +18,10 @@ import {
   Add as AddIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../../../redux/slices/authSlice';
-
-// Sample data
-const rows = [
-  { id: 1, name: 'Project 1', status: 'Active', lastRun: '2024-02-20', success: 15, failed: 2 },
-  { id: 2, name: 'Project 2', status: 'Paused', lastRun: '2024-02-19', success: 25, failed: 1 },
-  { id: 3, name: 'Project 3', status: 'Active', lastRun: '2024-02-18', success: 10, failed: 0 },
-  { id: 4, name: 'Project 4', status: 'Completed', lastRun: '2024-02-17', success: 30, failed: 3 },
-  { id: 5, name: 'Project 5', status: 'Active', lastRun: '2024-02-16', success: 20, failed: 1 },
-];
+import { createProject, fetchProjects, selectProjects, selectProjectsLoading } from '../../../redux/slices/projectsSlice';
+import NewProjectModal from './NewProjectModal';
 
 const columns = [
   { field: 'id', headerName: 'ID', width: 90 },
@@ -44,6 +37,14 @@ const Dashboard = () => {
   const dispatch = useDispatch();
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedRows, setSelectedRows] = useState([]);
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+
+  const projects = useSelector(selectProjects);
+  const loading = useSelector(selectProjectsLoading);
+
+  useEffect(() => {
+    dispatch(fetchProjects());
+  }, [dispatch]);
 
   const handleMenu = (event) => {
     setAnchorEl(event.currentTarget);
@@ -66,13 +67,27 @@ const Dashboard = () => {
   };
 
   const handleRefresh = () => {
-    // Implement refresh logic here
-    console.log('Refreshing data...');
+    dispatch(fetchProjects());
   };
 
   const handleAddNew = () => {
-    // Implement add new project logic here
-    console.log('Adding new project...');
+    setIsNewProjectModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsNewProjectModalOpen(false);
+  };
+
+  const handleCreateProject = async (projectData) => {
+    try {
+      await dispatch(createProject(projectData)).unwrap();
+      setIsNewProjectModalOpen(false);
+      // Refresh the projects list
+      dispatch(fetchProjects());
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      // You might want to show an error message to the user here
+    }
   };
 
   return (
@@ -136,12 +151,13 @@ const Dashboard = () => {
           
           <div style={{ height: 400, width: '100%' }}>
             <DataGrid
-              rows={rows}
+              rows={projects}
               columns={columns}
               pageSize={5}
               rowsPerPageOptions={[5]}
               checkboxSelection
               disableSelectionOnClick
+              loading={loading}
               onSelectionModelChange={(newSelection) => {
                 setSelectedRows(newSelection);
               }}
@@ -149,6 +165,12 @@ const Dashboard = () => {
           </div>
         </Paper>
       </Container>
+
+      <NewProjectModal
+        open={isNewProjectModalOpen}
+        onClose={handleCloseModal}
+        onSubmit={handleCreateProject}
+      />
     </Box>
   );
 };

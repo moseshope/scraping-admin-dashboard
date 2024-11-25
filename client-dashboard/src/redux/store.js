@@ -1,28 +1,25 @@
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer from './slices/authSlice';
 import userReducer from './slices/userSlice';
+import projectsReducer from './slices/projectsSlice';
 
 const store = configureStore({
   reducer: {
     auth: authReducer,
-    users: userReducer,
+    user: userReducer,
+    projects: projectsReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
         // Ignore these action types
-        ignoredActions: ['persist/PERSIST'],
+        ignoredActions: ['projects/createProject/fulfilled'],
         // Ignore these field paths in all actions
-        ignoredActionPaths: ['payload.timestamp'],
+        ignoredActionPaths: ['payload.startDate', 'payload.endDate'],
         // Ignore these paths in the state
-        ignoredPaths: ['items.dates'],
+        ignoredPaths: ['projects.projects.startDate', 'projects.projects.endDate'],
       },
     }),
-  devTools: process.env.NODE_ENV !== 'production',
 });
 
 export default store;
-
-// Infer the `RootState` and `AppDispatch` types from the store itself
-export type RootState = ReturnType<typeof store.getState>;
-export type AppDispatch = typeof store.dispatch;
