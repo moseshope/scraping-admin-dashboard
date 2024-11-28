@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -13,24 +13,24 @@ import {
   FormControlLabel,
   Switch,
   Grid,
+  Checkbox,
+  ListItemText,
+  OutlinedInput,
 } from '@mui/material';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 
-// Sample data for dropdowns
-const states = [
-  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
-  'Colorado', 'Connecticut', 'Delaware', 'Florida', 'Georgia',
-  'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
-  'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland',
-  'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri',
-  'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey',
-  'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio',
-  'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
-  'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
-  'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'
-];
+// Sample data for states and their cities
+const statesWithCities = {
+  'California': ['Los Angeles', 'San Francisco', 'San Diego', 'San Jose', 'Sacramento'],
+  'New York': ['New York City', 'Buffalo', 'Rochester', 'Syracuse', 'Albany'],
+  'Texas': ['Houston', 'Austin', 'Dallas', 'San Antonio', 'Fort Worth'],
+  'Florida': ['Miami', 'Orlando', 'Tampa', 'Jacksonville', 'Tallahassee'],
+  // Add more states and cities as needed
+};
+
+const states = Object.keys(statesWithCities);
 
 const businessTypes = [
   'Restaurant',
@@ -45,44 +45,115 @@ const businessTypes = [
   'Professional Services'
 ];
 
-// Sample cities (would typically be fetched based on selected state)
-const cities = [
-  'New York City',
-  'Los Angeles',
-  'Chicago',
-  'Houston',
-  'Phoenix',
-  'Philadelphia',
-  'San Antonio',
-  'San Diego',
-  'Dallas',
-  'San Jose'
-];
+const ITEM_HEIGHT = 48;
+const ITEM_PADDING_TOP = 8;
+const MenuProps = {
+  PaperProps: {
+    style: {
+      maxHeight: ITEM_HEIGHT * 4.5 + ITEM_PADDING_TOP,
+      width: 250,
+    },
+  },
+};
 
 const NewProjectModal = ({ open, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
     projectName: '',
     state: '',
-    city: '',
-    businessType: '',
+    cities: [],
+    businessTypes: [],
     startDate: null,
-    endDate: null,
     customQuery: '',
     highPriority: false,
+    entireScraping: false,
   });
+
+  const [availableCities, setAvailableCities] = useState([]);
+
+  useEffect(() => {
+    if (formData.state) {
+      setAvailableCities(statesWithCities[formData.state] || []);
+      // Reset cities selection when state changes
+      setFormData(prev => ({
+        ...prev,
+        cities: [],
+      }));
+    }
+  }, [formData.state]);
 
   const handleChange = (event) => {
     const { name, value, checked } = event.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: event.target.type === 'checkbox' ? checked : value
-    }));
+    if (name === 'entireScraping') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: checked,
+        // Reset location-specific fields if switching to entire scraping
+        ...(checked ? {
+          state: '',
+          cities: [],
+          businessTypes: [],
+        } : {}),
+      }));
+    } else if (name === 'cities') {
+      const selectedCities = typeof value === 'string' ? value.split(',') : value;
+      
+      // Handle "Select All" option
+      if (selectedCities.includes('all')) {
+        if (selectedCities.length === 1) {
+          // If only "Select All" is selected, select all cities
+          setFormData(prev => ({
+            ...prev,
+            cities: availableCities,
+          }));
+        } else {
+          // If "Select All" is unselected, clear selection
+          setFormData(prev => ({
+            ...prev,
+            cities: [],
+          }));
+        }
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          cities: selectedCities,
+        }));
+      }
+    } else if (name === 'businessTypes') {
+      const selectedTypes = typeof value === 'string' ? value.split(',') : value;
+      
+      // Handle "Select All" option
+      if (selectedTypes.includes('all')) {
+        if (selectedTypes.length === 1) {
+          // If only "Select All" is selected, select all business types
+          setFormData(prev => ({
+            ...prev,
+            businessTypes: businessTypes,
+          }));
+        } else {
+          // If "Select All" is unselected, clear selection
+          setFormData(prev => ({
+            ...prev,
+            businessTypes: [],
+          }));
+        }
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          businessTypes: selectedTypes,
+        }));
+      }
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: event.target.type === 'checkbox' ? checked : value,
+      }));
+    }
   };
 
-  const handleDateChange = (name) => (date) => {
+  const handleDateChange = (date) => {
     setFormData(prev => ({
       ...prev,
-      [name]: date
+      startDate: date,
     }));
   };
 
@@ -90,6 +161,8 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
     onSubmit(formData);
     onClose();
   };
+
+  const isFieldDisabled = formData.entireScraping;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -106,8 +179,22 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
             />
           </Grid>
 
+          <Grid item xs={12}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={formData.entireScraping}
+                  onChange={handleChange}
+                  name="entireScraping"
+                  color="primary"
+                />
+              }
+              label="Entire Scraping Mode"
+            />
+          </Grid>
+
           <Grid item xs={12} md={6}>
-            <FormControl fullWidth>
+            <FormControl fullWidth disabled={isFieldDisabled}>
               <InputLabel>State</InputLabel>
               <Select
                 name="state"
@@ -123,57 +210,74 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <FormControl fullWidth>
-              <InputLabel>City</InputLabel>
+            <FormControl fullWidth disabled={isFieldDisabled || !formData.state}>
+              <InputLabel>Cities</InputLabel>
               <Select
-                name="city"
-                value={formData.city}
-                label="City"
+                name="cities"
+                multiple
+                value={formData.cities}
                 onChange={handleChange}
-                disabled={!formData.state}
+                input={<OutlinedInput label="Cities" />}
+                renderValue={(selected) => selected.join(', ')}
+                MenuProps={MenuProps}
               >
-                {cities.map(city => (
-                  <MenuItem key={city} value={city}>{city}</MenuItem>
+                <MenuItem value="all">
+                  <Checkbox
+                    checked={
+                      availableCities.length > 0 &&
+                      formData.cities.length === availableCities.length
+                    }
+                  />
+                  <ListItemText primary="Select All" />
+                </MenuItem>
+                {availableCities.map((city) => (
+                  <MenuItem key={city} value={city}>
+                    <Checkbox checked={formData.cities.indexOf(city) > -1} />
+                    <ListItemText primary={city} />
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
           </Grid>
 
           <Grid item xs={12}>
-            <FormControl fullWidth>
-              <InputLabel>Business Type</InputLabel>
+            <FormControl fullWidth disabled={isFieldDisabled}>
+              <InputLabel>Business Types</InputLabel>
               <Select
-                name="businessType"
-                value={formData.businessType}
-                label="Business Type"
+                name="businessTypes"
+                multiple
+                value={formData.businessTypes}
                 onChange={handleChange}
+                input={<OutlinedInput label="Business Types" />}
+                renderValue={(selected) => selected.join(', ')}
+                MenuProps={MenuProps}
               >
-                {businessTypes.map(type => (
-                  <MenuItem key={type} value={type}>{type}</MenuItem>
+                <MenuItem value="all">
+                  <Checkbox
+                    checked={
+                      businessTypes.length > 0 &&
+                      formData.businessTypes.length === businessTypes.length
+                    }
+                  />
+                  <ListItemText primary="Select All" />
+                </MenuItem>
+                {businessTypes.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    <Checkbox checked={formData.businessTypes.indexOf(type) > -1} />
+                    <ListItemText primary={type} />
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12}>
             <LocalizationProvider dateAdapter={AdapterDayjs}>
               <DatePicker
                 label="Start Date"
                 value={formData.startDate}
-                onChange={handleDateChange('startDate')}
+                onChange={handleDateChange}
                 slotProps={{ textField: { fullWidth: true } }}
-              />
-            </LocalizationProvider>
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <DatePicker
-                label="End Date"
-                value={formData.endDate}
-                onChange={handleDateChange('endDate')}
-                slotProps={{ textField: { fullWidth: true } }}
-                minDate={formData.startDate}
               />
             </LocalizationProvider>
           </Grid>
@@ -212,7 +316,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
           onClick={handleSubmit} 
           variant="contained" 
           color="primary"
-          disabled={!formData.projectName || !formData.state || !formData.businessType}
+          disabled={!formData.projectName || (!formData.entireScraping && (!formData.state || formData.cities.length === 0 || formData.businessTypes.length === 0))}
         >
           Create Project
         </Button>
