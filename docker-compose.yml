@@ -29,10 +29,11 @@ services:
       - AWS_REGION=local
       - AWS_ACCESS_KEY_ID=local
       - AWS_SECRET_ACCESS_KEY=local
-    depends_on:
-      - dynamodb-local
     volumes:
       - ./server-dashboard/logs:/usr/src/app/logs
+      - ./full_estimate.csv:/usr/src/app/full_estimate.csv
+    depends_on:
+      - dynamodb-local
     networks:
       - dashboard-network
 
