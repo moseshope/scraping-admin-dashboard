@@ -24,6 +24,8 @@ import {
   Autocomplete,
   InputBase,
   Divider,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import {
   ExpandLess,
@@ -33,16 +35,7 @@ import {
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-
-// Sample data for states and their cities
-const statesWithCities = {
-  'California': ['Los Angeles', 'San Francisco', 'San Diego', 'San Jose', 'Sacramento'],
-  'New York': ['New York City', 'Buffalo', 'Rochester', 'Syracuse', 'Albany'],
-  'Texas': ['Houston', 'Austin', 'Dallas', 'San Antonio', 'Fort Worth'],
-  'Florida': ['Miami', 'Orlando', 'Tampa', 'Jacksonville', 'Tallahassee'],
-};
-
-const states = Object.keys(statesWithCities);
+import estimateService from '../../../services/estimate.service';
 
 const businessTypes = [
   'Restaurant',
@@ -69,6 +62,7 @@ const CityList = ({
   expandedCities,
   onExpandCity,
   isSelectedList = false,
+  loading = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [businessTypeSearchTerms, setBusinessTypeSearchTerms] = useState({});
@@ -98,6 +92,14 @@ const CityList = ({
 
   const isAllSelected = cities.length > 0 && cities.every(city => selectedCities.includes(city));
   const isSomeSelected = cities.length > 0 && cities.some(city => selectedCities.includes(city));
+
+  if (loading) {
+    return (
+      <Paper sx={{ height: '100%', minHeight: 400, maxHeight: 600, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <CircularProgress />
+      </Paper>
+    );
+  }
 
   return (
     <Paper sx={{ height: '100%', minHeight: 400, maxHeight: 600, overflow: 'auto' }}>
@@ -222,10 +224,14 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
     taskCount: '',
   });
 
+  const [states, setStates] = useState([]);
   const [availableCities, setAvailableCities] = useState([]);
   const [selectedCities, setSelectedCities] = useState([]);
   const [businessTypeSelections, setBusinessTypeSelections] = useState({});
   const [expandedCities, setExpandedCities] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // Calculate query count based on selections
   const queryCount = formData.entireScraping 
@@ -235,11 +241,51 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
         return total + (cityTypes.includes('All') ? businessTypes.length : cityTypes.length);
       }, 0);
 
+  // Fetch states on component mount
   useEffect(() => {
-    const newAvailableCities = formData.selectedStates.reduce((acc, state) => {
-      return [...acc, ...statesWithCities[state]];
-    }, []);
-    setAvailableCities([...new Set(newAvailableCities)]);
+    const fetchStates = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const statesData = await estimateService.getStates();
+        setStates(statesData);
+      } catch (err) {
+        setError('Failed to fetch states. Please try again.');
+        console.error('Error fetching states:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStates();
+  }, []);
+
+  // Fetch cities when states are selected
+  useEffect(() => {
+    const fetchCities = async () => {
+      if (!formData.selectedStates.length) {
+        setAvailableCities([]);
+        return;
+      }
+
+      try {
+        setCitiesLoading(true);
+        setError(null);
+        const citiesPromises = formData.selectedStates.map(state => 
+          estimateService.getCitiesInState(state)
+        );
+        const citiesResults = await Promise.all(citiesPromises);
+        const allCities = [...new Set(citiesResults.flat())];
+        setAvailableCities(allCities);
+      } catch (err) {
+        setError('Failed to fetch cities. Please try again.');
+        console.error('Error fetching cities:', err);
+      } finally {
+        setCitiesLoading(false);
+      }
+    };
+
+    fetchCities();
   }, [formData.selectedStates]);
 
   const handleChange = (event) => {
@@ -333,26 +379,60 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
     }));
   };
 
-  const handleSubmit = () => {
-    const finalData = {
-      ...formData,
-      queryCount,
-      cities: selectedCities.length > 0 ? selectedCities : ['All'],
-      businessTypes: Object.fromEntries(
-        selectedCities.map(city => [
-          city,
-          businessTypeSelections[city] || ['All']
-        ])
-      ),
-    };
-    onSubmit(finalData);
-    onClose();
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Prepare filter for getQueryIds
+      const filter = formData.entireScraping ? [] : formData.selectedStates.map(state => ({
+        state,
+        filters: selectedCities
+          .filter(city => availableCities.includes(city))
+          .map(city => ({
+            city,
+            businessType: businessTypeSelections[city] || ['All']
+          }))
+      }));
+
+      // Get query IDs
+      const queryIds = await estimateService.getQueryIds(
+        formData.entireScraping ? 0 : 1,
+        filter
+      );
+
+      const finalData = {
+        ...formData,
+        queryCount,
+        queryIds,
+        cities: selectedCities.length > 0 ? selectedCities : ['All'],
+        businessTypes: Object.fromEntries(
+          selectedCities.map(city => [
+            city,
+            businessTypeSelections[city] || ['All']
+          ])
+        ),
+      };
+
+      onSubmit(finalData);
+      onClose();
+    } catch (err) {
+      setError('Failed to create project. Please try again.');
+      console.error('Error creating project:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>Create New Project</DialogTitle>
       <DialogContent>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
         <Grid container spacing={3} sx={{ mt: 1 }}>
           <Grid item xs={12}>
             <TextField
@@ -386,11 +466,21 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
                   options={states}
                   value={formData.selectedStates}
                   onChange={handleStatesChange}
+                  loading={loading}
                   renderInput={(params) => (
                     <TextField
                       {...params}
                       label="States"
                       placeholder="Search and select states..."
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {loading ? <CircularProgress color="inherit" size={20} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
                     />
                   )}
                   renderTags={(value, getTagProps) =>
@@ -415,6 +505,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
                         onCityToggle={handleCityToggle}
                         onSelectAll={handleCitySelectAll}
                         searchable={true}
+                        loading={citiesLoading}
                       />
                     </Grid>
                     <Grid item xs={12} md={6}>
@@ -429,6 +520,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
                         expandedCities={expandedCities}
                         onExpandCity={handleExpandCity}
                         isSelectedList={true}
+                        loading={citiesLoading}
                       />
                     </Grid>
                   </Grid>
@@ -509,13 +601,14 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
           variant="contained" 
           color="primary"
           disabled={
+            loading ||
             !formData.projectName || 
             (!formData.entireScraping && formData.selectedStates.length === 0) ||
             !formData.taskCount ||
             queryCount === 0
           }
         >
-          Create Project
+          {loading ? <CircularProgress size={24} /> : 'Create Project'}
         </Button>
       </DialogActions>
     </Dialog>
