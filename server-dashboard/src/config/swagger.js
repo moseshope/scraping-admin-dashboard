@@ -6,10 +6,7 @@ const options = {
     info: {
       title: 'Scraping Admin Dashboard API',
       version: '1.0.0',
-      description: 'API documentation for the Scraping Admin Dashboard',
-      contact: {
-        name: 'API Support',
-      },
+      description: 'API documentation for Scraping Admin Dashboard',
     },
     servers: [
       {
@@ -25,107 +22,124 @@ const options = {
           bearerFormat: 'JWT',
         },
       },
-      schemas: {
-        User: {
-          type: 'object',
-          properties: {
-            email: {
-              type: 'string',
-              format: 'email',
-              description: 'User email address',
-            },
-            name: {
-              type: 'string',
-              description: 'User full name',
-            },
-            role: {
-              type: 'string',
-              enum: ['user', 'admin'],
-              description: 'User role',
-            },
-            createdAt: {
-              type: 'string',
-              format: 'date-time',
-              description: 'User creation timestamp',
-            },
-            updatedAt: {
-              type: 'string',
-              format: 'date-time',
-              description: 'User last update timestamp',
-            },
-          },
-        },
-        LoginRequest: {
-          type: 'object',
-          required: ['email', 'password'],
-          properties: {
-            email: {
-              type: 'string',
-              format: 'email',
-              description: 'User email address',
-            },
-            password: {
-              type: 'string',
-              format: 'password',
-              description: 'User password',
-            },
-          },
-        },
-        RegisterRequest: {
-          type: 'object',
-          required: ['email', 'password', 'name'],
-          properties: {
-            email: {
-              type: 'string',
-              format: 'email',
-              description: 'User email address',
-            },
-            password: {
-              type: 'string',
-              format: 'password',
-              description: 'User password',
-            },
-            name: {
-              type: 'string',
-              description: 'User full name',
-            },
-            role: {
-              type: 'string',
-              enum: ['user', 'admin'],
-              description: 'User role (optional)',
-            },
-          },
-        },
-        AuthResponse: {
-          type: 'object',
-          properties: {
-            message: {
-              type: 'string',
-              description: 'Response message',
-            },
-            user: {
-              $ref: '#/components/schemas/User',
-            },
-            token: {
-              type: 'string',
-              description: 'JWT token',
-            },
-          },
-        },
-        Error: {
-          type: 'object',
-          properties: {
-            message: {
-              type: 'string',
-              description: 'Error message',
-            },
-          },
-        },
-      },
     },
   },
-  apis: ['./src/routes/*.js'], // Path to the API routes
+  apis: [
+    './src/routes/*.js',
+    './src/models/*.js',
+  ],
 };
+
+// Estimate routes documentation
+/**
+ * @swagger
+ * /api/dev/getStates:
+ *   get:
+ *     tags: [Estimates]
+ *     summary: Get all unique states
+ *     description: Retrieves all unique state names from the Estimates table
+ *     responses:
+ *       200:
+ *         description: List of states retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 states:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *       500:
+ *         description: Server error
+ * 
+ * /api/dev/getCitiesInStates:
+ *   get:
+ *     tags: [Estimates]
+ *     summary: Get cities in a state
+ *     description: Retrieves all cities in a specified state
+ *     parameters:
+ *       - in: query
+ *         name: stateName
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Name of the state
+ *     responses:
+ *       200:
+ *         description: List of cities retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 cities:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *       400:
+ *         description: State name is required
+ *       500:
+ *         description: Server error
+ * 
+ * /api/dev/getQueryIds:
+ *   post:
+ *     tags: [Estimates]
+ *     summary: Get query IDs based on filters
+ *     description: Retrieves query IDs that match the specified filters
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               scrapingMode:
+ *                 type: integer
+ *                 enum: [0, 1]
+ *                 description: 0 for entire mode, 1 for filtered mode
+ *               filter:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     state:
+ *                       type: string
+ *                     filters:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           city:
+ *                             type: string
+ *                           businessType:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ *             example:
+ *               scrapingMode: 0
+ *               filter:
+ *                 - state: "CA"
+ *                   filters:
+ *                     - city: "Mountain View"
+ *                       businessType: []
+ *                     - city: "Cupertino"
+ *                       businessType: ["Caterer"]
+ *     responses:
+ *       200:
+ *         description: Query IDs retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ids:
+ *                   type: array
+ *                   items:
+ *                     type: integer
+ *       500:
+ *         description: Server error
+ */
 
 const swaggerSpec = swaggerJsdoc(options);
 

@@ -9,6 +9,7 @@ const logger = require('./utils/logger');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
+const estimateRoutes = require('./routes/estimate.routes');
 
 // Initialize express app
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/dev', estimateRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

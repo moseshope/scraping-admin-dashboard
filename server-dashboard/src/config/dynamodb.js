@@ -16,6 +16,7 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 // Define table names
 const TABLES = {
   USERS: 'Users',
+  ESTIMATES: 'Estimates'
 };
 
 // Create Users table if it doesn't exist
@@ -47,10 +48,50 @@ const createUsersTable = async () => {
   }
 };
 
+// Create Estimates table if it doesn't exist
+const createEstimatesTable = async () => {
+  const params = {
+    TableName: TABLES.ESTIMATES,
+    KeySchema: [
+      { AttributeName: 'id', KeyType: 'HASH' }, // Partition key
+    ],
+    AttributeDefinitions: [
+      { AttributeName: 'id', AttributeType: 'N' },
+    ],
+    ProvisionedThroughput: {
+      ReadCapacityUnits: 100,
+      WriteCapacityUnits: 2000,
+    },
+  };
+
+  try {
+    await dynamodb.createTable(params).promise();
+    logger.info(`Created table: ${TABLES.ESTIMATES}`);
+  } catch (error) {
+    if (error.code === 'ResourceInUseException') {
+      logger.info(`Table already exists: ${TABLES.ESTIMATES}`);
+      // Update the throughput for existing table
+      const updateParams = {
+        TableName: TABLES.ESTIMATES,
+        ProvisionedThroughput: {
+          ReadCapacityUnits: 100,
+          WriteCapacityUnits: 2000,
+        }
+      };
+      await dynamodb.updateTable(updateParams).promise();
+      logger.info(`Updated throughput for table: ${TABLES.ESTIMATES}`);
+    } else {
+      logger.error('Error creating Estimates table:', error);
+      throw error;
+    }
+  }
+};
+
 // Initialize DynamoDB tables
 const initializeTables = async () => {
   try {
     await createUsersTable();
+    await createEstimatesTable();
     logger.info('DynamoDB tables initialized successfully');
   } catch (error) {
     logger.error('Error initializing DynamoDB tables:', error);
@@ -116,6 +157,23 @@ const dynamoDbHelpers = {
       return result.Items;
     } catch (error) {
       logger.error(`Error querying items from ${tableName}:`, error);
+      throw error;
+    }
+  },
+
+  // Scan items
+  scan: async (tableName, filterExpression, expressionAttributeValues, expressionAttributeNames) => {
+    const params = {
+      TableName: tableName,
+      ...(filterExpression && { FilterExpression: filterExpression }),
+      ...(expressionAttributeValues && { ExpressionAttributeValues: expressionAttributeValues }),
+      ...(expressionAttributeNames && { ExpressionAttributeNames: expressionAttributeNames }),
+    };
+    try {
+      const result = await docClient.scan(params).promise();
+      return result.Items;
+    } catch (error) {
+      logger.error(`Error scanning items from ${tableName}:`, error);
       throw error;
     }
   },
