@@ -6,7 +6,6 @@ import {
   DialogActions,
   Button,
   TextField,
-  FormControl,
   FormControlLabel,
   Switch,
   Grid,
@@ -285,51 +284,46 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
   // Update query count when any filter changes
   useEffect(() => {
     const updateQueryCount = async () => {
-      if (formData.entireScraping) {
-        setQueryCount(businessTypes.length);
-        return;
-      }
-
-      if (formData.selectedStates.length === 0) {
-        setQueryCount(0);
-        return;
-      }
-
       try {
         setQueryCountLoading(true);
         setError(null);
-
-        // Prepare filter for getQueryIds
-        const filter = formData.selectedStates.map(state => {
-          const stateFilter = {
-            state,
-            filters: []
-          };
-
-          // If cities are selected, use them; otherwise, use all available cities
-          const citiesToUse = selectedCities.length > 0 ? selectedCities : availableCities;
-
-          if (citiesToUse.length > 0) {
-            stateFilter.filters = citiesToUse.map(city => {
-              const cityFilter = { city };
-              // Only include businessType if it's explicitly selected
-              const selectedTypes = businessTypeSelections[city];
-              if (selectedTypes && selectedTypes.length > 0) {
-                cityFilter.businessType = selectedTypes;
-              }
-              return cityFilter;
-            });
-          } else {
-            // If no cities are available yet, use 'All'
-            stateFilter.filters = [{ city: 'All' }];
-          }
-
-          return stateFilter;
-        });
-
-        // Get query IDs
-        const queryIds = await estimateService.getQueryIds(1, filter);
-        setQueryCount(queryIds.length);
+  
+        if (formData.entireScraping) {
+          // Entire scraping mode (scrapingMode = 0)
+          const queryIds = await estimateService.getQueryIds(0, []);
+          setQueryCount(queryIds.length);
+        } else if (formData.selectedStates.length === 0) {
+          // No states selected
+          setQueryCount(0);
+        } else {
+          // States are selected
+          const filter = formData.selectedStates.map((state) => {
+            if (selectedCities.length === 0) {
+              // State-only selection:
+              // Provide a default filter so the backend knows to return all queries for that state
+              return { 
+                state, 
+                filters: [{ city: 'All' }] 
+              };
+            } else {
+              // State and city selection
+              const cityFilters = selectedCities.map((city) => {
+                const chosenTypes = businessTypeSelections[city];
+                // Include businessType only if explicitly chosen and not 'All'
+                if (chosenTypes && chosenTypes.length > 0 && !chosenTypes.includes('All')) {
+                  return { city, businessType: chosenTypes };
+                } else {
+                  return { city };
+                }
+              });
+              return { state, filters: cityFilters };
+            }
+          });
+  
+          const queryIds = await estimateService.getQueryIds(1, filter);
+          setQueryCount(queryIds.length);
+        }
+  
       } catch (err) {
         setError('Failed to update query count. Please try again.');
         console.error('Error updating query count:', err);
@@ -337,16 +331,15 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
         setQueryCountLoading(false);
       }
     };
-
+  
     updateQueryCount();
   }, [
+    formData.entireScraping,
     formData.selectedStates,
     selectedCities,
-    businessTypeSelections,
-    formData.entireScraping,
-    availableCities
+    businessTypeSelections
   ]);
-
+  
   const handleChange = (event) => {
     const { name, value, checked } = event.target;
     if (name === 'entireScraping') {
@@ -422,7 +415,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
       
       return {
         ...prev,
-        [city]: newCityTypes.length > 0 ? newCityTypes : ['All'],
+        [city]: newCityTypes,
       };
     });
   };
@@ -449,11 +442,12 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
       const finalData = {
         ...formData,
         queryCount,
-        cities: selectedCities.length > 0 ? selectedCities : ['All'],
+        // If no city selected, we won't add cities to the final data or can add ['All'] if needed.
+        cities: selectedCities.length > 0 ? selectedCities : [],
         businessTypes: Object.fromEntries(
           selectedCities.map(city => [
             city,
-            businessTypeSelections[city] || ['All']
+            businessTypeSelections[city] || []
           ])
         ),
       };
