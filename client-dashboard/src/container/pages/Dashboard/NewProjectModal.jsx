@@ -38,16 +38,16 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import estimateService from '../../../services/estimate.service';
 
 const businessTypes = [
-  'Restaurant',
-  'Retail',
-  'Healthcare',
-  'Technology',
-  'Education',
-  'Manufacturing',
-  'Construction',
-  'Real Estate',
-  'Financial Services',
-  'Professional Services'
+  'Massage therapist',
+  'Caterer',
+  'Plasterer',
+  'Uniform store',
+  'Lawyer',
+  'Blood testing service',
+  'Taxi service',
+  'Gas company',
+  'Ballet school',
+  'Retirement home'
 ];
 
 const CityList = ({
@@ -232,14 +232,8 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
   const [loading, setLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  // Calculate query count based on selections
-  const queryCount = formData.entireScraping 
-    ? businessTypes.length 
-    : selectedCities.reduce((total, city) => {
-        const cityTypes = businessTypeSelections[city] || ['All'];
-        return total + (cityTypes.includes('All') ? businessTypes.length : cityTypes.length);
-      }, 0);
+  const [queryCount, setQueryCount] = useState(0);
+  const [queryCountLoading, setQueryCountLoading] = useState(false);
 
   // Fetch states on component mount
   useEffect(() => {
@@ -288,6 +282,71 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
     fetchCities();
   }, [formData.selectedStates]);
 
+  // Update query count when any filter changes
+  useEffect(() => {
+    const updateQueryCount = async () => {
+      if (formData.entireScraping) {
+        setQueryCount(businessTypes.length);
+        return;
+      }
+
+      if (formData.selectedStates.length === 0) {
+        setQueryCount(0);
+        return;
+      }
+
+      try {
+        setQueryCountLoading(true);
+        setError(null);
+
+        // Prepare filter for getQueryIds
+        const filter = formData.selectedStates.map(state => {
+          const stateFilter = {
+            state,
+            filters: []
+          };
+
+          // If cities are selected, use them; otherwise, use all available cities
+          const citiesToUse = selectedCities.length > 0 ? selectedCities : availableCities;
+
+          if (citiesToUse.length > 0) {
+            stateFilter.filters = citiesToUse.map(city => {
+              const cityFilter = { city };
+              // Only include businessType if it's explicitly selected
+              const selectedTypes = businessTypeSelections[city];
+              if (selectedTypes && selectedTypes.length > 0) {
+                cityFilter.businessType = selectedTypes;
+              }
+              return cityFilter;
+            });
+          } else {
+            // If no cities are available yet, use 'All'
+            stateFilter.filters = [{ city: 'All' }];
+          }
+
+          return stateFilter;
+        });
+
+        // Get query IDs
+        const queryIds = await estimateService.getQueryIds(1, filter);
+        setQueryCount(queryIds.length);
+      } catch (err) {
+        setError('Failed to update query count. Please try again.');
+        console.error('Error updating query count:', err);
+      } finally {
+        setQueryCountLoading(false);
+      }
+    };
+
+    updateQueryCount();
+  }, [
+    formData.selectedStates,
+    selectedCities,
+    businessTypeSelections,
+    formData.entireScraping,
+    availableCities
+  ]);
+
   const handleChange = (event) => {
     const { name, value, checked } = event.target;
     if (name === 'entireScraping') {
@@ -318,6 +377,9 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
       ...prev,
       selectedStates: newValue,
     }));
+    // Reset cities and business types when states change
+    setSelectedCities([]);
+    setBusinessTypeSelections({});
   };
 
   const handleCityToggle = (city) => {
@@ -384,27 +446,9 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
       setLoading(true);
       setError(null);
 
-      // Prepare filter for getQueryIds
-      const filter = formData.entireScraping ? [] : formData.selectedStates.map(state => ({
-        state,
-        filters: selectedCities
-          .filter(city => availableCities.includes(city))
-          .map(city => ({
-            city,
-            businessType: businessTypeSelections[city] || ['All']
-          }))
-      }));
-
-      // Get query IDs
-      const queryIds = await estimateService.getQueryIds(
-        formData.entireScraping ? 0 : 1,
-        filter
-      );
-
       const finalData = {
         ...formData,
         queryCount,
-        queryIds,
         cities: selectedCities.length > 0 ? selectedCities : ['All'],
         businessTypes: Object.fromEntries(
           selectedCities.map(city => [
@@ -534,9 +578,12 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
               label="Selected Query Count"
               type="text"
               fullWidth
-              value={queryCount}
+              value={queryCountLoading ? 'Calculating...' : queryCount}
               InputProps={{
                 readOnly: true,
+                endAdornment: queryCountLoading && (
+                  <CircularProgress color="inherit" size={20} />
+                ),
               }}
               helperText="Total number of queries based on selections"
             />
