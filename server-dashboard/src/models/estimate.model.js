@@ -6,6 +6,18 @@ class EstimateModel {
     this.tableName = TABLES.ESTIMATES;
   }
 
+  // Helper function to scan all items with pagination
+  async scanAllItems(params) {
+    let items = [];
+    let data;
+    do {
+      data = await docClient.scan(params).promise();
+      items = items.concat(data.Items);
+      params.ExclusiveStartKey = data.LastEvaluatedKey;
+    } while (typeof data.LastEvaluatedKey !== "undefined");
+    return items;
+  }
+
   async getUniqueStates() {
     try {
       const params = {
@@ -16,8 +28,8 @@ class EstimateModel {
         },
       };
 
-      const data = await docClient.scan(params).promise();
-      return [...new Set(data.Items.map((item) => item["state"]))].sort();
+      const allData = await this.scanAllItems(params);
+      return [...new Set(allData.map((item) => item["state"]))].sort();
     } catch (error) {
       logger.error("Error getting states:", error);
       throw error;
@@ -39,8 +51,8 @@ class EstimateModel {
         },
       };
 
-      const data = await docClient.scan(params).promise();
-      return [...new Set(data.Items.map((item) => item.city))].sort();
+      const allData = await this.scanAllItems(params);
+      return [...new Set(allData.map((item) => item.city))].sort();
     } catch (error) {
       logger.error("Error getting cities:", error);
       throw error;
@@ -59,8 +71,8 @@ class EstimateModel {
           },
         };
 
-        const data = await docClient.scan(params).promise();
-        return data.Items.map((item) => item.id);
+        const allData = await this.scanAllItems(params);
+        return allData.map((item) => item.id);
       }
 
       // scrapingMode = 1, process filters
@@ -85,10 +97,10 @@ class EstimateModel {
             ProjectionExpression: "#id",
           };
 
-          const data = await docClient.scan(params).promise();
-          data.Items.forEach((item) => allIds.add(item.id));
+          const allData = await this.scanAllItems(params);
+          allData.forEach((item) => allIds.add(item.id));
         } else {
-          // We have filters, which likely means city or city+businessType selection
+          // We have filters (city or city+businessType)
           for (const cityFilter of filters) {
             const { city, businessType } = cityFilter;
 
@@ -107,8 +119,8 @@ class EstimateModel {
                 ProjectionExpression: "#id",
               };
 
-              const data = await docClient.scan(params).promise();
-              data.Items.forEach((item) => allIds.add(item.id));
+              const allData = await this.scanAllItems(params);
+              allData.forEach((item) => allIds.add(item.id));
             } else {
               // Filter by state and city
               let filterExpression = "#st = :stateVal AND #c = :cityVal";
@@ -122,29 +134,21 @@ class EstimateModel {
                 ":cityVal": city,
               };
 
-              // Add business type filter if specified and not empty
+              // Add business type filter if specified
               if (businessType && businessType.length > 0) {
-                // DynamoDB doesn't allow using "IN" directly with arrays in FilterExpression
-                // We must use multiple OR conditions or a different approach
-                // One approach: check if the businessType includes 'All'
                 if (!businessType.includes("All")) {
-                  // If we have an array of categories, we must filter them one by one
-                  // DynamoDB doesn't have a direct "IN" operator for arrays.
-                  // One workaround is to use "OR" conditions or re-scan multiple times.
-                  // For simplicity, if businessType is multiple values, we can do multiple scans or
-                  // build a condition like (#cat = :cat1 OR #cat = :cat2 ...)
-
-                  const categoryFilters = businessType
+                  // Build OR conditions for multiple business types
+                  const categoryConditions = businessType
                     .map((cat, idx) => `#cat = :catVal${idx}`)
                     .join(" OR ");
-                  filterExpression += ` AND (${categoryFilters})`;
+                  filterExpression += ` AND (${categoryConditions})`;
                   expressionAttributeNames["#cat"] = "category";
 
                   businessType.forEach((cat, idx) => {
                     expressionAttributeValues[`:catVal${idx}`] = cat;
                   });
                 }
-                // If 'All' is included, that means we don't filter by category at all.
+                // If 'All' is included, we do not add a category filter
               }
 
               const params = {
@@ -155,8 +159,8 @@ class EstimateModel {
                 ProjectionExpression: "#id",
               };
 
-              const data = await docClient.scan(params).promise();
-              data.Items.forEach((item) => allIds.add(item.id));
+              const allData = await this.scanAllItems(params);
+              allData.forEach((item) => allIds.add(item.id));
             }
           }
         }
