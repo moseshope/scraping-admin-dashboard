@@ -80,90 +80,54 @@ class EstimateModel {
 
       for (const stateFilter of filter) {
         const { state, filters } = stateFilter;
+        const { cities = ['All'], businessTypes = ['All'] } = filters;
 
-        // If no filters array or filters is empty, it means state-only selection
-        if (!filters || filters.length === 0) {
-          // Return all queries that match the selected state
-          const params = {
-            TableName: this.tableName,
-            FilterExpression: "#st = :stateVal",
-            ExpressionAttributeNames: {
-              "#st": "state",
-              "#id": "id",
-            },
-            ExpressionAttributeValues: {
-              ":stateVal": state,
-            },
-            ProjectionExpression: "#id",
-          };
+        // Build the filter expression
+        let filterExpression = "#st = :stateVal";
+        let expressionAttributeNames = {
+          "#st": "state",
+          "#id": "id",
+        };
+        let expressionAttributeValues = {
+          ":stateVal": state,
+        };
 
-          const allData = await this.scanAllItems(params);
-          allData.forEach((item) => allIds.add(item.id));
-        } else {
-          // We have filters (city or city+businessType)
-          for (const cityFilter of filters) {
-            const { city, businessType } = cityFilter;
-
-            // If city is 'All', we should return all queries for that state, ignoring city
-            if (city === "All") {
-              const params = {
-                TableName: this.tableName,
-                FilterExpression: "#st = :stateVal",
-                ExpressionAttributeNames: {
-                  "#st": "state",
-                  "#id": "id",
-                },
-                ExpressionAttributeValues: {
-                  ":stateVal": state,
-                },
-                ProjectionExpression: "#id",
-              };
-
-              const allData = await this.scanAllItems(params);
-              allData.forEach((item) => allIds.add(item.id));
-            } else {
-              // Filter by state and city
-              let filterExpression = "#st = :stateVal AND #c = :cityVal";
-              let expressionAttributeNames = {
-                "#st": "state",
-                "#c": "city",
-                "#id": "id",
-              };
-              let expressionAttributeValues = {
-                ":stateVal": state,
-                ":cityVal": city,
-              };
-
-              // Add business type filter if specified
-              if (businessType && businessType.length > 0) {
-                if (!businessType.includes("All")) {
-                  // Build OR conditions for multiple business types
-                  const categoryConditions = businessType
-                    .map((cat, idx) => `#cat = :catVal${idx}`)
-                    .join(" OR ");
-                  filterExpression += ` AND (${categoryConditions})`;
-                  expressionAttributeNames["#cat"] = "category";
-
-                  businessType.forEach((cat, idx) => {
-                    expressionAttributeValues[`:catVal${idx}`] = cat;
-                  });
-                }
-                // If 'All' is included, we do not add a category filter
-              }
-
-              const params = {
-                TableName: this.tableName,
-                FilterExpression: filterExpression,
-                ExpressionAttributeNames: expressionAttributeNames,
-                ExpressionAttributeValues: expressionAttributeValues,
-                ProjectionExpression: "#id",
-              };
-
-              const allData = await this.scanAllItems(params);
-              allData.forEach((item) => allIds.add(item.id));
-            }
-          }
+        // Add city filter if specified
+        if (!cities.includes('All')) {
+          filterExpression += " AND #c IN (";
+          expressionAttributeNames["#c"] = "city";
+          
+          cities.forEach((city, idx) => {
+            const cityKey = `:cityVal${idx}`;
+            filterExpression += idx === 0 ? cityKey : `, ${cityKey}`;
+            expressionAttributeValues[cityKey] = city;
+          });
+          filterExpression += ")";
         }
+
+        // Add business type filter if specified
+        if (!businessTypes.includes('All')) {
+          filterExpression += " AND #cat IN (";
+          expressionAttributeNames["#cat"] = "category";
+          
+          businessTypes.forEach((type, idx) => {
+            const typeKey = `:typeVal${idx}`;
+            filterExpression += idx === 0 ? typeKey : `, ${typeKey}`;
+            expressionAttributeValues[typeKey] = type;
+          });
+          filterExpression += ")";
+        }
+
+        const params = {
+          TableName: this.tableName,
+          FilterExpression: filterExpression,
+          ExpressionAttributeNames: expressionAttributeNames,
+          ExpressionAttributeValues: expressionAttributeValues,
+          ProjectionExpression: "#id",
+        };
+
+        const allData = await this.scanAllItems(params);
+        allData.forEach((item) => allIds.add(item.id));
       }
 
       return Array.from(allIds).sort((a, b) => a - b);
