@@ -35,6 +35,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import estimateService from '../../../services/estimate.service';
+import dayjs from 'dayjs';
 
 const businessTypes = [
   'Massage therapist',
@@ -233,6 +234,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
   const [error, setError] = useState(null);
   const [queryCount, setQueryCount] = useState(0);
   const [queryCountLoading, setQueryCountLoading] = useState(false);
+  const [queryIds, setQueryIds] = useState([]);
 
   // Fetch states on component mount
   useEffect(() => {
@@ -290,17 +292,18 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
   
         if (formData.entireScraping) {
           // Entire scraping mode (scrapingMode = 0)
-          const queryIds = await estimateService.getQueryIds(0, []);
-          setQueryCount(queryIds.length);
+          const ids = await estimateService.getQueryIds(0, []);
+          setQueryIds(ids);
+          setQueryCount(ids.length);
         } else if (formData.selectedStates.length === 0) {
           // No states selected
+          setQueryIds([]);
           setQueryCount(0);
         } else {
           // States are selected
           const filter = formData.selectedStates.map((state) => {
             if (selectedCities.length === 0) {
-              // State-only selection:
-              // Provide a default filter so the backend knows to return all queries for that state
+              // State-only selection
               return { 
                 state, 
                 filters: [{ city: 'All' }] 
@@ -309,7 +312,6 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
               // State and city selection
               const cityFilters = selectedCities.map((city) => {
                 const chosenTypes = businessTypeSelections[city];
-                // Include businessType only if explicitly chosen and not 'All'
                 if (chosenTypes && chosenTypes.length > 0 && !chosenTypes.includes('All')) {
                   return { city, businessType: chosenTypes };
                 } else {
@@ -320,8 +322,9 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
             }
           });
   
-          const queryIds = await estimateService.getQueryIds(1, filter);
-          setQueryCount(queryIds.length);
+          const ids = await estimateService.getQueryIds(1, filter);
+          setQueryIds(ids);
+          setQueryCount(ids.length);
         }
   
       } catch (err) {
@@ -439,10 +442,26 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
       setLoading(true);
       setError(null);
 
+      // Check if start date is today
+      const today = dayjs();
+      const startDate = dayjs(formData.startDate);
+      const isToday = startDate.format('YYYY-MM-DD') === today.format('YYYY-MM-DD');
+
+      if (!isToday) {
+        setError('Start date must be today for immediate task execution');
+        return;
+      }
+
+      // Start scraping tasks with the query list
+      const scrapingResult = await estimateService.startScraping(
+        formData.taskCount,
+        queryIds,
+        formData.startDate.toDate()
+      );
+
       const finalData = {
         ...formData,
         queryCount,
-        // If no city selected, we won't add cities to the final data or can add ['All'] if needed.
         cities: selectedCities.length > 0 ? selectedCities : [],
         businessTypes: Object.fromEntries(
           selectedCities.map(city => [
@@ -450,6 +469,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
             businessTypeSelections[city] || []
           ])
         ),
+        scrapingTasks: scrapingResult.tasks
       };
 
       onSubmit(finalData);
@@ -646,7 +666,8 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
             !formData.projectName || 
             (!formData.entireScraping && formData.selectedStates.length === 0) ||
             !formData.taskCount ||
-            queryCount === 0
+            queryCount === 0 ||
+            !formData.startDate
           }
         >
           {loading ? <CircularProgress size={24} /> : 'Create Project'}

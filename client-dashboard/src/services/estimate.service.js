@@ -38,6 +38,21 @@ const estimateService = {
       throw error;
     }
   },
+
+  // Start scraping tasks with query distribution
+  startScraping: async (taskCount, queryList, startDate) => {
+    try {
+      const response = await api.post("/dev/startScraping", {
+        taskCount: parseInt(taskCount, 10),
+        queryList,
+        startDate: startDate.toISOString(),
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Error starting scraping tasks:", error);
+      throw error;
+    }
+  },
 };
 
 export default estimateService;
