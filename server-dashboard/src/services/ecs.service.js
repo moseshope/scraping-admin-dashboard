@@ -25,8 +25,8 @@ class ECSService {
       },
     });
 
-    this.clusterName = "ScrapingCluster";
-    this.taskDefinitionFamily = "scraping-task";
+    this.clusterName = "TestScrapingCluster";
+    this.taskDefinitionFamily = "test-scraping-task";
     this.subnetId = "subnet-0cef1fabb02085215";
 
     // Log initialization but not the credentials
@@ -39,9 +39,9 @@ class ECSService {
       networkMode: "awsvpc",
       containerDefinitions: [
         {
-          name: "scraping-container",
+          name: "test-scraping-container",
           image:
-            "426284527517.dkr.ecr.us-west-1.amazonaws.com/business-rate-scraper-module:latest",
+            "426284527517.dkr.ecr.us-west-1.amazonaws.com/test-business-rate-scraping-module:latest",
           cpu: 1024,
           memory: 3072,
           essential: true,
@@ -131,7 +131,7 @@ class ECSService {
           overrides: {
             containerOverrides: [
               {
-                name: "scraping-container",
+                name: "test-scraping-container",
                 environment: [
                   {
                     name: "QUERY_DATA",
