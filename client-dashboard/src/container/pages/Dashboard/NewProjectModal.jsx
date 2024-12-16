@@ -16,7 +16,6 @@ import {
   ListItemIcon,
   ListItemText,
   Checkbox,
-  Collapse,
   IconButton,
   Box,
   Chip,
@@ -27,14 +26,13 @@ import {
   Alert,
 } from '@mui/material';
 import {
-  ExpandLess,
-  ExpandMore,
   Search as SearchIcon,
 } from '@mui/icons-material';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import estimateService from '../../../services/estimate.service';
+import dayjs from 'dayjs';
 
 const businessTypes = [
   'Massage therapist',
@@ -49,59 +47,34 @@ const businessTypes = [
   'Retirement home'
 ];
 
-const CityList = ({
+const FilterList = ({
   title,
-  cities,
-  selectedCities,
-  onCityToggle,
+  items,
+  selectedItems,
+  onItemToggle,
   onSelectAll,
   searchable = false,
-  businessTypeSelections,
-  onBusinessTypeToggle,
-  expandedCities,
-  onExpandCity,
-  isSelectedList = false,
   loading = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [businessTypeSearchTerms, setBusinessTypeSearchTerms] = useState({});
 
-  const filteredCities = cities.filter(city =>
-    city.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredItems = items.filter(item =>
+    item.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleExpandClick = (event, city) => {
-    event.stopPropagation();
-    onExpandCity(city);
-  };
-
-  const handleBusinessTypeSearch = (city, term) => {
-    setBusinessTypeSearchTerms(prev => ({
-      ...prev,
-      [city]: term,
-    }));
-  };
-
-  const getFilteredBusinessTypes = (city) => {
-    const searchTerm = businessTypeSearchTerms[city] || '';
-    return businessTypes.filter(type =>
-      type.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  };
-
-  const isAllSelected = cities.length > 0 && cities.every(city => selectedCities.includes(city));
-  const isSomeSelected = cities.length > 0 && cities.some(city => selectedCities.includes(city));
+  const isAllSelected = items.length > 0 && items.every(item => selectedItems.includes(item));
+  const isSomeSelected = items.length > 0 && items.some(item => selectedItems.includes(item));
 
   if (loading) {
     return (
-      <Paper sx={{ height: '100%', minHeight: 400, maxHeight: 600, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      <Paper sx={{ height: '100%', minHeight: 300, maxHeight: 400, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <CircularProgress />
       </Paper>
     );
   }
 
   return (
-    <Paper sx={{ height: '100%', minHeight: 400, maxHeight: 600, overflow: 'auto' }}>
+    <Paper sx={{ height: '100%', minHeight: 300, maxHeight: 400, overflow: 'auto' }}>
       <Box sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
           {title}
@@ -121,7 +94,7 @@ const CityList = ({
           >
             <InputBase
               sx={{ ml: 1, flex: 1 }}
-              placeholder="Search cities..."
+              placeholder={`Search ${title.toLowerCase()}...`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -131,80 +104,23 @@ const CityList = ({
           </Paper>
         )}
         <List>
-          {!isSelectedList && (
-            <>
-              <ListItem button onClick={onSelectAll}>
-                <ListItemIcon>
-                  <Checkbox
-                    checked={isAllSelected}
-                    indeterminate={!isAllSelected && isSomeSelected}
-                  />
-                </ListItemIcon>
-                <ListItemText primary="Select All Cities" />
-              </ListItem>
-              <Divider />
-            </>
-          )}
-          {filteredCities.map((city) => (
-            <React.Fragment key={city}>
-              <ListItem button onClick={() => onCityToggle(city)}>
-                <ListItemIcon>
-                  <Checkbox checked={selectedCities.includes(city)} />
-                </ListItemIcon>
-                <ListItemText primary={city} />
-                {isSelectedList && (
-                  <IconButton onClick={(e) => handleExpandClick(e, city)}>
-                    {expandedCities[city] ? <ExpandLess /> : <ExpandMore />}
-                  </IconButton>
-                )}
-              </ListItem>
-              {isSelectedList && (
-                <Collapse in={expandedCities[city]} timeout="auto" unmountOnExit>
-                  <List component="div" disablePadding>
-                    <ListItem sx={{ pl: 4 }}>
-                      <Paper
-                        sx={{
-                          p: '2px 4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          width: '100%',
-                          mb: 1,
-                        }}
-                      >
-                        <InputBase
-                          sx={{ ml: 1, flex: 1 }}
-                          placeholder="Search business types..."
-                          value={businessTypeSearchTerms[city] || ''}
-                          onChange={(e) => handleBusinessTypeSearch(city, e.target.value)}
-                        />
-                        <IconButton sx={{ p: '10px' }}>
-                          <SearchIcon />
-                        </IconButton>
-                      </Paper>
-                    </ListItem>
-                    {getFilteredBusinessTypes(city).map((type) => (
-                      <ListItem
-                        key={`${city}-${type}`}
-                        button
-                        sx={{ pl: 6 }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onBusinessTypeToggle(city, type);
-                        }}
-                      >
-                        <ListItemIcon>
-                          <Checkbox
-                            checked={(businessTypeSelections[city] || []).includes(type)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </ListItemIcon>
-                        <ListItemText primary={type} />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Collapse>
-              )}
-            </React.Fragment>
+          <ListItem button onClick={onSelectAll}>
+            <ListItemIcon>
+              <Checkbox
+                checked={isAllSelected}
+                indeterminate={!isAllSelected && isSomeSelected}
+              />
+            </ListItemIcon>
+            <ListItemText primary={`Select All ${title}`} />
+          </ListItem>
+          <Divider />
+          {filteredItems.map((item) => (
+            <ListItem key={item} button onClick={() => onItemToggle(item)}>
+              <ListItemIcon>
+                <Checkbox checked={selectedItems.includes(item)} />
+              </ListItemIcon>
+              <ListItemText primary={item} />
+            </ListItem>
           ))}
         </List>
       </Box>
@@ -226,13 +142,13 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
   const [states, setStates] = useState([]);
   const [availableCities, setAvailableCities] = useState([]);
   const [selectedCities, setSelectedCities] = useState([]);
-  const [businessTypeSelections, setBusinessTypeSelections] = useState({});
-  const [expandedCities, setExpandedCities] = useState({});
+  const [selectedBusinessTypes, setSelectedBusinessTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [error, setError] = useState(null);
   const [queryCount, setQueryCount] = useState(0);
   const [queryCountLoading, setQueryCountLoading] = useState(false);
+  const [queryIds, setQueryIds] = useState([]);
 
   // Fetch states on component mount
   useEffect(() => {
@@ -290,38 +206,26 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
   
         if (formData.entireScraping) {
           // Entire scraping mode (scrapingMode = 0)
-          const queryIds = await estimateService.getQueryIds(0, []);
-          setQueryCount(queryIds.length);
+          const ids = await estimateService.getQueryIds(0, []);
+          setQueryIds(ids);
+          setQueryCount(ids.length);
         } else if (formData.selectedStates.length === 0) {
           // No states selected
+          setQueryIds([]);
           setQueryCount(0);
         } else {
           // States are selected
-          const filter = formData.selectedStates.map((state) => {
-            if (selectedCities.length === 0) {
-              // State-only selection:
-              // Provide a default filter so the backend knows to return all queries for that state
-              return { 
-                state, 
-                filters: [{ city: 'All' }] 
-              };
-            } else {
-              // State and city selection
-              const cityFilters = selectedCities.map((city) => {
-                const chosenTypes = businessTypeSelections[city];
-                // Include businessType only if explicitly chosen and not 'All'
-                if (chosenTypes && chosenTypes.length > 0 && !chosenTypes.includes('All')) {
-                  return { city, businessType: chosenTypes };
-                } else {
-                  return { city };
-                }
-              });
-              return { state, filters: cityFilters };
+          const filter = formData.selectedStates.map((state) => ({
+            state,
+            filters: {
+              cities: selectedCities.length > 0 ? selectedCities : ['All'],
+              businessTypes: selectedBusinessTypes.length > 0 ? selectedBusinessTypes : ['All']
             }
-          });
+          }));
   
-          const queryIds = await estimateService.getQueryIds(1, filter);
-          setQueryCount(queryIds.length);
+          const ids = await estimateService.getQueryIds(1, filter);
+          setQueryIds(ids);
+          setQueryCount(ids.length);
         }
   
       } catch (err) {
@@ -337,7 +241,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
     formData.entireScraping,
     formData.selectedStates,
     selectedCities,
-    businessTypeSelections
+    selectedBusinessTypes
   ]);
   
   const handleChange = (event) => {
@@ -349,7 +253,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
         selectedStates: checked ? [] : prev.selectedStates,
       }));
       setSelectedCities([]);
-      setBusinessTypeSelections({});
+      setSelectedBusinessTypes([]);
     } else if (name === 'taskCount') {
       // Only allow positive numbers
       const numValue = value.replace(/[^0-9]/g, '');
@@ -370,18 +274,13 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
       ...prev,
       selectedStates: newValue,
     }));
-    // Reset cities and business types when states change
+    // Reset cities when states change
     setSelectedCities([]);
-    setBusinessTypeSelections({});
   };
 
   const handleCityToggle = (city) => {
     setSelectedCities(prev => {
       if (prev.includes(city)) {
-        // Remove city and its business type selections
-        const newBusinessTypes = { ...businessTypeSelections };
-        delete newBusinessTypes[city];
-        setBusinessTypeSelections(newBusinessTypes);
         return prev.filter(c => c !== city);
       } else {
         return [...prev, city];
@@ -389,42 +288,30 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
     });
   };
 
-  const handleCitySelectAll = () => {
-    const availableCitiesSet = new Set(availableCities);
-    const newSelectedCities = selectedCities.filter(city => !availableCitiesSet.has(city));
-    
-    if (availableCities.every(city => selectedCities.includes(city))) {
-      // If all cities are selected, unselect them
-      setSelectedCities(newSelectedCities);
-      // Clear business type selections for unselected cities
-      const newBusinessTypes = { ...businessTypeSelections };
-      availableCities.forEach(city => delete newBusinessTypes[city]);
-      setBusinessTypeSelections(newBusinessTypes);
-    } else {
-      // Select all available cities
-      setSelectedCities([...newSelectedCities, ...availableCities]);
-    }
-  };
-
-  const handleBusinessTypeToggle = (city, type) => {
-    setBusinessTypeSelections(prev => {
-      const cityTypes = prev[city] || [];
-      const newCityTypes = cityTypes.includes(type)
-        ? cityTypes.filter(t => t !== type)
-        : [...cityTypes, type];
-      
-      return {
-        ...prev,
-        [city]: newCityTypes,
-      };
+  const handleBusinessTypeToggle = (type) => {
+    setSelectedBusinessTypes(prev => {
+      if (prev.includes(type)) {
+        return prev.filter(t => t !== type);
+      } else {
+        return [...prev, type];
+      }
     });
   };
 
-  const handleExpandCity = (city) => {
-    setExpandedCities(prev => ({
-      ...prev,
-      [city]: !prev[city],
-    }));
+  const handleCitySelectAll = () => {
+    if (availableCities.every(city => selectedCities.includes(city))) {
+      setSelectedCities([]);
+    } else {
+      setSelectedCities([...availableCities]);
+    }
+  };
+
+  const handleBusinessTypeSelectAll = () => {
+    if (businessTypes.every(type => selectedBusinessTypes.includes(type))) {
+      setSelectedBusinessTypes([]);
+    } else {
+      setSelectedBusinessTypes([...businessTypes]);
+    }
   };
 
   const handleDateChange = (date) => {
@@ -439,17 +326,29 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
       setLoading(true);
       setError(null);
 
+      // Check if start date is today
+      const today = dayjs();
+      const startDate = dayjs(formData.startDate);
+      const isToday = startDate.format('YYYY-MM-DD') === today.format('YYYY-MM-DD');
+
+      if (!isToday) {
+        setError('Start date must be today for immediate task execution');
+        return;
+      }
+
+      // Start scraping tasks with the query list
+      const scrapingResult = await estimateService.startScraping(
+        formData.taskCount,
+        queryIds,
+        formData.startDate.toDate()
+      );
+
       const finalData = {
         ...formData,
         queryCount,
-        // If no city selected, we won't add cities to the final data or can add ['All'] if needed.
-        cities: selectedCities.length > 0 ? selectedCities : [],
-        businessTypes: Object.fromEntries(
-          selectedCities.map(city => [
-            city,
-            businessTypeSelections[city] || []
-          ])
-        ),
+        cities: selectedCities,
+        businessTypes: selectedBusinessTypes,
+        scrapingTasks: scrapingResult.tasks
       };
 
       onSubmit(finalData);
@@ -533,36 +432,34 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
               </Grid>
 
               {formData.selectedStates.length > 0 && (
-                <Grid item xs={12}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <CityList
-                        title="Available Cities"
-                        cities={availableCities.filter(city => !selectedCities.includes(city))}
-                        selectedCities={selectedCities}
-                        onCityToggle={handleCityToggle}
-                        onSelectAll={handleCitySelectAll}
-                        searchable={true}
-                        loading={citiesLoading}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <CityList
-                        title="Selected Cities"
-                        cities={selectedCities}
-                        selectedCities={selectedCities}
-                        onCityToggle={handleCityToggle}
-                        searchable={true}
-                        businessTypeSelections={businessTypeSelections}
-                        onBusinessTypeToggle={handleBusinessTypeToggle}
-                        expandedCities={expandedCities}
-                        onExpandCity={handleExpandCity}
-                        isSelectedList={true}
-                        loading={citiesLoading}
-                      />
-                    </Grid>
+                <>
+                  <Grid item xs={12}>
+                    <Typography variant="h6" gutterBottom>
+                      Filter Options
+                    </Typography>
                   </Grid>
-                </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FilterList
+                      title="Cities"
+                      items={availableCities}
+                      selectedItems={selectedCities}
+                      onItemToggle={handleCityToggle}
+                      onSelectAll={handleCitySelectAll}
+                      searchable={true}
+                      loading={citiesLoading}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FilterList
+                      title="Business Types"
+                      items={businessTypes}
+                      selectedItems={selectedBusinessTypes}
+                      onItemToggle={handleBusinessTypeToggle}
+                      onSelectAll={handleBusinessTypeSelectAll}
+                      searchable={true}
+                    />
+                  </Grid>
+                </>
               )}
             </>
           )}
@@ -646,7 +543,8 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
             !formData.projectName || 
             (!formData.entireScraping && formData.selectedStates.length === 0) ||
             !formData.taskCount ||
-            queryCount === 0
+            queryCount === 0 ||
+            !formData.startDate
           }
         >
           {loading ? <CircularProgress size={24} /> : 'Create Project'}
