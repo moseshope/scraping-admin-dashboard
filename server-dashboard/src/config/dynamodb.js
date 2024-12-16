@@ -16,7 +16,8 @@ const docClient = new AWS.DynamoDB.DocumentClient();
 // Define table names
 const TABLES = {
   USERS: 'Users',
-  ESTIMATES: 'Estimates'
+  ESTIMATES: 'Estimates',
+  PROJECTS: 'Projects'
 };
 
 // Create Users table if it doesn't exist
@@ -87,11 +88,41 @@ const createEstimatesTable = async () => {
   }
 };
 
+// Create Projects table if it doesn't exist
+const createProjectsTable = async () => {
+  const params = {
+    TableName: TABLES.PROJECTS,
+    KeySchema: [
+      { AttributeName: 'id', KeyType: 'HASH' }, // Partition key
+    ],
+    AttributeDefinitions: [
+      { AttributeName: 'id', AttributeType: 'S' },
+    ],
+    ProvisionedThroughput: {
+      ReadCapacityUnits: 5,
+      WriteCapacityUnits: 5,
+    },
+  };
+
+  try {
+    await dynamodb.createTable(params).promise();
+    logger.info(`Created table: ${TABLES.PROJECTS}`);
+  } catch (error) {
+    if (error.code === 'ResourceInUseException') {
+      logger.info(`Table already exists: ${TABLES.PROJECTS}`);
+    } else {
+      logger.error('Error creating Projects table:', error);
+      throw error;
+    }
+  }
+};
+
 // Initialize DynamoDB tables
 const initializeTables = async () => {
   try {
     await createUsersTable();
     await createEstimatesTable();
+    await createProjectsTable();
     logger.info('DynamoDB tables initialized successfully');
   } catch (error) {
     logger.error('Error initializing DynamoDB tables:', error);

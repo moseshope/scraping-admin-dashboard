@@ -1,121 +1,192 @@
-# Scraping Admin Dashboard
+# Business Rate Scraper Admin Dashboard
 
-A full-stack application with React frontend and Express backend, using DynamoDB for data storage.
+A full-stack application for managing and monitoring business rate scraping tasks using AWS ECS and DynamoDB.
+
+## Features
+
+- User authentication and authorization
+- Project management for scraping tasks
+- Real-time task monitoring
+- Performance metrics visualization
+- AWS ECS task management
+- DynamoDB data storage
+
+## Project Structure
+
+```
+.
+├── client-dashboard/          # React frontend
+│   ├── src/
+│   │   ├── container/        # React components
+│   │   ├── redux/           # Redux state management
+│   │   └── services/        # API services
+│   └── public/              # Static files
+│
+└── server-dashboard/         # Node.js backend
+    ├── src/
+    │   ├── config/          # Configuration files
+    │   ├── middleware/      # Express middleware
+    │   ├── models/          # Data models
+    │   ├── routes/          # API routes
+    │   ├── services/        # Business logic
+    │   └── utils/           # Utility functions
+    └── logs/                # Application logs
+```
 
 ## Prerequisites
 
-- Docker
-- Docker Compose
-
-## Getting Started
-
-1. Clone the repository:
-
-```bash
-git clone <repository-url>
-cd scraping-admin-dashboard
-```
-
-2. Build and start the containers:
-
-```bash
-docker-compose up --build
-```
-
-This command will:
-
-- Build the client and server images
-- Start the DynamoDB local instance
-- Start all services in the correct order
-
-The application will be available at:
-
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
-- DynamoDB Local: http://localhost:8000
-- Swagger API doc: http://localhost:5000/api-docs/
-
-## Services
-
-### Client Dashboard (Frontend)
-
-- React application
-- Running on port 3000
-- Configured with Nginx for production serving
-- Automatically proxies API requests to the backend
-
-### Server Dashboard (Backend)
-
-- Express.js application
-- Running on port 5000
-- JWT authentication
-- Connected to local DynamoDB
-- Winston logging enabled
-
-### DynamoDB Local
-
-- Running on port 8000
-- Persistent data storage through Docker volume
-- Accessible within the Docker network
-
-## Development
-
-To stop the services:
-
-```bash
-docker-compose down
-```
-
-To view logs:
-
-```bash
-# All services
-docker-compose logs
-
-# Specific service
-docker-compose logs client-dashboard
-docker-compose logs server-dashboard
-docker-compose logs dynamodb-local
-```
-
-To rebuild a specific service:
-
-```bash
-docker-compose up --build <service-name>
-```
+- Node.js 18 or higher
+- Docker and Docker Compose
+- AWS Account with:
+  - ECS cluster
+  - DynamoDB tables
+  - S3 bucket
+  - IAM roles configured
 
 ## Environment Variables
 
-The docker-compose.yml file includes all necessary environment variables for development. For production, you should:
+### Server (.env)
+```env
+# AWS Configuration
+AWS_REGION=us-west-1
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+DYNAMODB_LOCAL_ENDPOINT=http://localhost:8000
 
-1. Create a .env file
-2. Never commit sensitive information to version control
-3. Use secure secrets management
+# JWT Configuration
+JWT_SECRET=your_jwt_secret
+JWT_EXPIRES_IN=24h
 
-## Troubleshooting
+# Server Configuration
+PORT=5000
+NODE_ENV=development
+```
 
-1. If the client can't connect to the API:
+### Client (.env)
+```env
+REACT_APP_API_URL=http://localhost:5000/api
+```
 
-   - Check if the server-dashboard container is running
-   - Verify the REACT_APP_API_URL environment variable
+## Installation
 
-2. If DynamoDB tables aren't created:
+1. Clone the repository:
+```bash
+git clone [repository-url]
+cd scraping-admin-dashboard
+```
 
-   - Check the server-dashboard logs
-   - Verify the DYNAMODB_LOCAL_ENDPOINT environment variable
+2. Install dependencies:
+```bash
+# Install server dependencies
+cd server-dashboard
+npm install
 
-3. For permission issues with logs:
+# Install client dependencies
+cd ../client-dashboard
+npm install
+```
 
-   - The logs directory is mounted as a volume
-   - Ensure proper write permissions
+3. Set up environment variables:
+- Copy `.env.example` to `.env` in both client and server directories
+- Update the values according to your configuration
 
-4. If ports are already in use:
-   - Check if other services are using ports 3000, 5000, or 8000
-   - Stop conflicting services or modify the ports in docker-compose.yml
+## Development
 
-## Security Notes
+1. Start the development servers:
+```bash
+# Start server in development mode
+cd server-dashboard
+npm run dev
 
-1. The JWT secret should be changed in production
-2. DynamoDB credentials should be properly configured in production
-3. CORS settings should be reviewed for production
-4. Use HTTPS in production
+# Start client in development mode
+cd client-dashboard
+npm start
+```
+
+2. Access the application:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:5000
+- API Documentation: http://localhost:5000/api-docs
+
+## Docker Deployment
+
+1. Build and push the scraping module:
+```bash
+aws ecr get-login-password --region us-west-1 | docker login --username AWS --password-stdin [account-id].dkr.ecr.us-west-1.amazonaws.com
+
+docker build -t business-rate-scraper-module .
+
+docker tag business-rate-scraper-module:latest [account-id].dkr.ecr.us-west-1.amazonaws.com/business-rate-scraper-module:latest
+
+docker push [account-id].dkr.ecr.us-west-1.amazonaws.com/business-rate-scraper-module:latest
+```
+
+2. Deploy using Docker Compose:
+```bash
+docker-compose up -d
+```
+
+## API Endpoints
+
+### Authentication
+- POST /api/auth/register - Register new user
+- POST /api/auth/login - User login
+- POST /api/auth/logout - User logout
+
+### Projects
+- GET /api/projects - List all projects
+- POST /api/projects - Create new project
+- GET /api/projects/:id - Get project details
+- PUT /api/projects/:id - Update project
+- DELETE /api/projects/:id - Delete project
+- POST /api/projects/:id/status - Update project status
+
+### Estimates
+- GET /api/dev/getStates - Get available states
+- GET /api/dev/getCitiesInStates - Get cities in a state
+- POST /api/dev/getQueryIds - Get query IDs based on filters
+- POST /api/dev/startScraping - Start scraping tasks
+
+## Data Models
+
+### Project
+```javascript
+{
+  id: "uuid",
+  name: "Project Name",
+  status: "pending|running|completed|failed|paused",
+  createdAt: "timestamp",
+  updatedAt: "timestamp",
+  settings: {
+    entireScraping: boolean,
+    highPriority: boolean,
+    taskCount: number,
+    startDate: "date",
+    customQuery: "string"
+  },
+  filters: {
+    states: ["state1", "state2"],
+    cities: ["city1", "city2"],
+    businessTypes: ["type1", "type2"]
+  },
+  queryCount: number,
+  queryIds: ["id1", "id2"],
+  scrapingTasks: [/* task details */]
+}
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the BR License.
+
+## Author
+
+lucky.yaroslav0430@gmail.com

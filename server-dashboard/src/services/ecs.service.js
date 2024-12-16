@@ -3,7 +3,13 @@ const {
   RegisterTaskDefinitionCommand,
   ListTaskDefinitionsCommand,
   RunTaskCommand,
+  ListTasksCommand,
+  DescribeTasksCommand,
 } = require("@aws-sdk/client-ecs");
+const {
+  CloudWatchClient,
+  GetMetricDataCommand,
+} = require("@aws-sdk/client-cloudwatch");
 const logger = require("../utils/logger");
 require("dotenv").config();
 
@@ -17,13 +23,16 @@ class ECSService {
       throw new Error("AWS credentials not found in environment variables");
     }
 
-    this.client = new ECSClient({
+    const awsConfig = {
       region: "us-west-1",
       credentials: {
         accessKeyId,
         secretAccessKey,
       },
-    });
+    };
+
+    this.client = new ECSClient(awsConfig);
+    this.cloudWatch = new CloudWatchClient(awsConfig);
 
     this.clusterName = "TestScrapingCluster";
     this.taskDefinitionFamily = "test-scraping-task";
@@ -151,6 +160,92 @@ class ECSService {
       return tasks;
     } catch (error) {
       logger.error("Error running tasks:", error);
+      throw error;
+    }
+  }
+
+  async getTasksPerformance(startTime, endTime) {
+    try {
+      // First, get all running tasks
+      const listTasksCommand = new ListTasksCommand({
+        cluster: this.clusterName,
+      });
+      
+      const tasksList = await this.client.send(listTasksCommand);
+      
+      if (!tasksList.taskArns || tasksList.taskArns.length === 0) {
+        return [];
+      }
+
+      // Get detailed task information
+      const describeTasksCommand = new DescribeTasksCommand({
+        cluster: this.clusterName,
+        tasks: tasksList.taskArns,
+      });
+
+      const tasksInfo = await this.client.send(describeTasksCommand);
+
+      // Get CloudWatch metrics for each task
+      const metricDataQueries = tasksInfo.tasks.map((task, index) => ([
+        {
+          Id: `cpu_${index}`,
+          MetricStat: {
+            Metric: {
+              Namespace: "AWS/ECS",
+              MetricName: "CPUUtilization",
+              Dimensions: [
+                { Name: "ClusterName", Value: this.clusterName },
+                { Name: "TaskId", Value: task.taskArn.split("/").pop() }
+              ]
+            },
+            Period: 60,
+            Stat: "Average"
+          },
+          ReturnData: true
+        },
+        {
+          Id: `memory_${index}`,
+          MetricStat: {
+            Metric: {
+              Namespace: "AWS/ECS",
+              MetricName: "MemoryUtilization",
+              Dimensions: [
+                { Name: "ClusterName", Value: this.clusterName },
+                { Name: "TaskId", Value: task.taskArn.split("/").pop() }
+              ]
+            },
+            Period: 60,
+            Stat: "Average"
+          },
+          ReturnData: true
+        }
+      ])).flat();
+
+      const metricsCommand = new GetMetricDataCommand({
+        MetricDataQueries: metricDataQueries,
+        StartTime: startTime || new Date(Date.now() - 3600000), // Last hour if not specified
+        EndTime: endTime || new Date()
+      });
+
+      const metricsData = await this.cloudWatch.send(metricsCommand);
+
+      // Combine task info with metrics
+      return tasksInfo.tasks.map((task, index) => ({
+        taskId: task.taskArn.split("/").pop(),
+        status: task.lastStatus,
+        startedAt: task.startedAt,
+        stoppedAt: task.stoppedAt,
+        cpu: {
+          utilization: metricsData.MetricDataResults[index * 2],
+          timestamp: metricsData.MetricDataResults[index * 2].Timestamps
+        },
+        memory: {
+          utilization: metricsData.MetricDataResults[index * 2 + 1],
+          timestamp: metricsData.MetricDataResults[index * 2 + 1].Timestamps
+        }
+      }));
+    } catch (error) {
+      logger.error("Error getting tasks performance:", error);
       throw error;
     }
   }

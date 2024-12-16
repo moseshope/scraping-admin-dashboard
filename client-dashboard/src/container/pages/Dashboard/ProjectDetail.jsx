@@ -28,81 +28,61 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-
-// Sample data for instances
-const sampleInstances = [
-  {
-    id: 1,
-    name: 'Instance-1',
-    cpuPerformance: 45,
-    memoryPerformance: 60,
-    status: 'running',
-  },
-  {
-    id: 2,
-    name: 'Instance-2',
-    cpuPerformance: 30,
-    memoryPerformance: 45,
-    status: 'stopped',
-  },
-  {
-    id: 3,
-    name: 'Instance-3',
-    cpuPerformance: 75,
-    memoryPerformance: 80,
-    status: 'running',
-  },
-];
-
-// Sample performance data for charts
-const generatePerformanceData = () => {
-  const data = [];
-  for (let i = 0; i < 20; i++) {
-    data.push({
-      time: new Date(Date.now() - (20 - i) * 60000).toLocaleTimeString(),
-      cpu: Math.floor(Math.random() * 100),
-      memory: Math.floor(Math.random() * 100),
-    });
-  }
-  return data;
-};
+import estimateService from '../../../services/estimate.service';
 
 const ProjectDetail = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const [selectedInstance, setSelectedInstance] = useState(null);
-  const [performanceData, setPerformanceData] = useState(generatePerformanceData());
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [performanceData, setPerformanceData] = useState([]);
 
-  // Simulate real-time updates
+  // Fetch task performance data
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPerformanceData(prevData => {
-        const newData = [...prevData.slice(1)];
-        newData.push({
-          time: new Date().toLocaleTimeString(),
-          cpu: Math.floor(Math.random() * 100),
-          memory: Math.floor(Math.random() * 100),
-        });
-        return newData;
-      });
-    }, 5000);
+    const cleanup = estimateService.pollTaskPerformance((data) => {
+      // Transform task data for the table
+      const transformedTasks = data.map(task => ({
+        id: task.taskId,
+        name: `Task-${task.taskId.slice(-6)}`,
+        cpuPerformance: task.cpu.utilization[task.cpu.utilization.length - 1] || 0,
+        memoryPerformance: task.memory.utilization[task.memory.utilization.length - 1] || 0,
+        status: task.status.toLowerCase(),
+        startedAt: task.startedAt,
+        stoppedAt: task.stoppedAt,
+        rawData: task // Keep raw data for chart
+      }));
+      setTasks(transformedTasks);
 
-    return () => clearInterval(interval);
-  }, []);
+      // If a task is selected, update its performance data
+      if (selectedTask) {
+        const selectedTaskData = data.find(t => t.taskId === selectedTask.id);
+        if (selectedTaskData) {
+          const chartData = selectedTaskData.cpu.timestamp.map((time, index) => ({
+            time: new Date(time).toLocaleTimeString(),
+            cpu: selectedTaskData.cpu.utilization[index] || 0,
+            memory: selectedTaskData.memory.utilization[index] || 0,
+          }));
+          setPerformanceData(chartData);
+        }
+      }
+    });
+
+    return cleanup;
+  }, [selectedTask]);
 
   const columns = [
-    { field: 'name', headerName: 'Instance Name', width: 200 },
+    { field: 'name', headerName: 'Task Name', width: 200 },
     {
       field: 'cpuPerformance',
-      headerName: 'CPU Performance',
+      headerName: 'CPU Usage',
       width: 150,
-      valueFormatter: (params) => `${params.value}%`,
+      valueFormatter: (params) => `${params.value.toFixed(2)}%`,
     },
     {
       field: 'memoryPerformance',
-      headerName: 'Memory Performance',
+      headerName: 'Memory Usage',
       width: 150,
-      valueFormatter: (params) => `${params.value}%`,
+      valueFormatter: (params) => `${params.value.toFixed(2)}%`,
     },
     {
       field: 'status',
@@ -126,6 +106,13 @@ const ProjectDetail = () => {
           {params.value}
         </Box>
       ),
+    },
+    {
+      field: 'startedAt',
+      headerName: 'Started At',
+      width: 200,
+      valueFormatter: (params) => 
+        params.value ? new Date(params.value).toLocaleString() : 'N/A',
     },
     {
       field: 'actions',
@@ -161,20 +148,28 @@ const ProjectDetail = () => {
     },
   ];
 
-  const handleStart = (instanceId) => {
-    console.log('Starting instance:', instanceId);
+  const handleStart = (taskId) => {
+    console.log('Starting task:', taskId);
   };
 
-  const handleStop = (instanceId) => {
-    console.log('Stopping instance:', instanceId);
+  const handleStop = (taskId) => {
+    console.log('Stopping task:', taskId);
   };
 
-  const handleRestart = (instanceId) => {
-    console.log('Restarting instance:', instanceId);
+  const handleRestart = (taskId) => {
+    console.log('Restarting task:', taskId);
   };
 
   const handleRowClick = (params) => {
-    setSelectedInstance(params.row);
+    setSelectedTask(params.row);
+    if (params.row.rawData) {
+      const chartData = params.row.rawData.cpu.timestamp.map((time, index) => ({
+        time: new Date(time).toLocaleTimeString(),
+        cpu: params.row.rawData.cpu.utilization[index] || 0,
+        memory: params.row.rawData.memory.utilization[index] || 0,
+      }));
+      setPerformanceData(chartData);
+    }
   };
 
   return (
@@ -198,11 +193,11 @@ const ProjectDetail = () => {
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
         <Paper sx={{ p: 2, mb: 4 }}>
           <Typography variant="h6" gutterBottom>
-            Instances
+            ECS Tasks
           </Typography>
           <div style={{ height: 400, width: '100%' }}>
             <DataGrid
-              rows={sampleInstances}
+              rows={tasks}
               columns={columns}
               pageSize={5}
               rowsPerPageOptions={[5]}
@@ -220,10 +215,10 @@ const ProjectDetail = () => {
           </div>
         </Paper>
 
-        {selectedInstance && (
+        {selectedTask && (
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
-              Performance Metrics - {selectedInstance.name}
+              Performance Metrics - {selectedTask.name}
             </Typography>
             <Box sx={{ width: '100%', height: 400 }}>
               <ResponsiveContainer>
@@ -239,6 +234,7 @@ const ProjectDetail = () => {
                       angle: -90,
                       position: 'insideLeft',
                     }}
+                    domain={[0, 100]}
                   />
                   <Tooltip />
                   <Legend />
