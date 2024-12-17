@@ -32,7 +32,6 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import estimateService from '../../../services/estimate.service';
-import projectService from '../../../services/project.service';
 import dayjs from 'dayjs';
 
 const businessTypes = [
@@ -131,7 +130,7 @@ const FilterList = ({
 
 const NewProjectModal = ({ open, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
-    projectName: '',
+    name: '',
     selectedStates: [],
     startDate: null,
     customQuery: '',
@@ -344,14 +343,18 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
         formData.startDate.toDate()
       );
 
+      if (!scrapingResult || !scrapingResult.tasks || scrapingResult.tasks.length === 0) {
+        throw new Error('No tasks were created from scraping');
+      }
+
       // Create project with scraping result data
       const projectData = {
-        name: formData.projectName,
+        name: formData.name, // Changed from projectName to name
         status: 'running',
         settings: {
           entireScraping: formData.entireScraping,
           highPriority: formData.highPriority,
-          taskCount: formData.taskCount,
+          taskCount: parseInt(formData.taskCount, 10),
           startDate: formData.startDate.toISOString(),
           customQuery: formData.customQuery || '',
         },
@@ -360,15 +363,13 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
           cities: selectedCities,
           businessTypes: selectedBusinessTypes,
         },
-        queryCount,
+        queryCount: parseInt(queryCount, 10),
         queryIds,
         scrapingTasks: scrapingResult.tasks,
       };
 
-      // Save project to database
-      const savedProject = await projectService.createProject(projectData);
-
-      onSubmit(savedProject);
+      // Create project and wait for it to complete
+      await onSubmit(projectData);
       onClose();
     } catch (err) {
       setError('Failed to create project. Please try again.');
@@ -390,10 +391,10 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
         <Grid container spacing={3} sx={{ mt: 1 }}>
           <Grid item xs={12}>
             <TextField
-              name="projectName"
+              name="name"
               label="Project Name"
               fullWidth
-              value={formData.projectName}
+              value={formData.name}
               onChange={handleChange}
             />
           </Grid>
@@ -557,7 +558,7 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
           color="primary"
           disabled={
             loading ||
-            !formData.projectName || 
+            !formData.name || 
             (!formData.entireScraping && formData.selectedStates.length === 0) ||
             !formData.taskCount ||
             queryCount === 0 ||

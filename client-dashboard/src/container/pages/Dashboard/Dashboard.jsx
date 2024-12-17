@@ -72,13 +72,19 @@ const Dashboard = () => {
 
   const handleCreateProject = async (projectData) => {
     try {
-      await dispatch(createProject(projectData)).unwrap();
+      // Create project and wait for it to complete
+      const result = await dispatch(createProject(projectData)).unwrap();
       setIsNewProjectModalOpen(false);
-      // Refresh the projects list
-      dispatch(fetchProjects());
+      
+      // Add a small delay before fetching projects to ensure the database has updated
+      setTimeout(() => {
+        dispatch(fetchProjects());
+      }, 1000);
+      
+      return result;
     } catch (error) {
       console.error('Failed to create project:', error);
-      // You might want to show an error message to the user here
+      throw error; // Re-throw to let the modal handle the error
     }
   };
 

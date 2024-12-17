@@ -3,6 +3,7 @@ const router = express.Router();
 const logger = require("../utils/logger");
 const estimateModel = require("../models/estimate.model");
 const ecsService = require("../services/ecs.service");
+const projectModel = require("../models/project.model");
 
 // Get all unique states
 router.get("/getStates", async (req, res) => {
@@ -45,32 +46,6 @@ router.post("/getQueryIds", async (req, res) => {
   }
 });
 
-// Get task performance metrics
-router.get("/taskPerformance", async (req, res) => {
-  try {
-    const { startTime, endTime } = req.query;
-    
-    // Convert string dates to Date objects if provided
-    const start = startTime ? new Date(startTime) : undefined;
-    const end = endTime ? new Date(endTime) : undefined;
-    
-    // Validate date range if both are provided
-    if (start && end && start > end) {
-      return res.status(400).json({ error: "Start time must be before end time" });
-    }
-
-    const performanceData = await ecsService.getTasksPerformance(start, end);
-    
-    res.json({
-      message: "Successfully retrieved task performance data",
-      data: performanceData
-    });
-  } catch (error) {
-    logger.error("Error getting task performance:", error);
-    res.status(500).json({ error: "Failed to get task performance data" });
-  }
-});
-
 // Start scraping tasks
 router.post("/startScraping", async (req, res) => {
   const { taskCount, queryList, startDate } = req.body;
@@ -100,10 +75,15 @@ router.post("/startScraping", async (req, res) => {
     today.toISOString().split("T")[0] ===
     startDateObj.toISOString().split("T")[0];
 
+  if (!isToday) {
+    return res.status(400).json({ error: "Start date must be today for immediate task execution" });
+  }
+
   try {
     // Get or create task definition and run tasks with distributed queries
     const tasks = await ecsService.runTasks(Number(taskCount), queryList);
 
+    // Return the tasks information
     res.json({
       message: `Successfully started ${tasks.length} scraping tasks`,
       tasks: tasks.map((task) => ({
@@ -123,6 +103,32 @@ router.post("/startScraping", async (req, res) => {
   } catch (error) {
     logger.error("Error starting scraping tasks:", error);
     res.status(500).json({ error: "Failed to start scraping tasks" });
+  }
+});
+
+// Get task performance metrics
+router.get("/taskPerformance", async (req, res) => {
+  try {
+    const { startTime, endTime } = req.query;
+    
+    // Convert string dates to Date objects if provided
+    const start = startTime ? new Date(startTime) : undefined;
+    const end = endTime ? new Date(endTime) : undefined;
+    
+    // Validate date range if both are provided
+    if (start && end && start > end) {
+      return res.status(400).json({ error: "Start time must be before end time" });
+    }
+
+    const performanceData = await ecsService.getTasksPerformance(start, end);
+    
+    res.json({
+      message: "Successfully retrieved task performance data",
+      data: performanceData
+    });
+  } catch (error) {
+    logger.error("Error getting task performance:", error);
+    res.status(500).json({ error: "Failed to get task performance data" });
   }
 });
 

@@ -15,12 +15,38 @@ router.post(
   [verifyToken, ...createProjectSchema, validateResults],
   async (req, res) => {
     try {
-      const project = await projectModel.createProject(req.body);
-      logger.info(`Project created successfully: ${project.id}`);
-      res.status(201).json(project);
+      // Check if a project with the same name exists
+      const existingProjects = await projectModel.getProjects();
+      const existingProject = existingProjects.find(p => p.name === req.body.name);
+      
+      if (existingProject) {
+        // If project exists, update it with new tasks
+        const updatedProject = {
+          ...existingProject,
+          scrapingTasks: [
+            ...existingProject.scrapingTasks,
+            ...req.body.scrapingTasks
+          ],
+          queryCount: existingProject.queryCount + req.body.queryCount,
+          settings: {
+            ...existingProject.settings,
+            taskCount: existingProject.settings.taskCount + req.body.settings.taskCount
+          },
+          updatedAt: new Date().toISOString()
+        };
+        
+        const project = await projectModel.updateProject(existingProject.id, updatedProject);
+        logger.info(`Project updated with new tasks: ${project.id}`);
+        res.json(project);
+      } else {
+        // Create new project
+        const project = await projectModel.createProject(req.body);
+        logger.info(`Project created successfully: ${project.id}`);
+        res.status(201).json(project);
+      }
     } catch (error) {
-      logger.error("Error creating project:", error);
-      res.status(500).json({ error: "Failed to create project" });
+      logger.error("Error creating/updating project:", error);
+      res.status(500).json({ error: "Failed to create/update project" });
     }
   }
 );
@@ -51,7 +77,6 @@ router.get("/:id", verifyToken, async (req, res) => {
 });
 
 // Update project
-// Make fields optional by calling `.optional()` on each validation chain
 router.put(
   "/:id",
   [

@@ -32,12 +32,12 @@ class ProjectModel {
       const project = {
         id: uuidv4(),
         name: projectData.name,
-        status: projectData.status || "pending",
+        status: projectData.status || "running", // Set initial status to running since tasks are starting
         createdAt: now,
         updatedAt: now,
-        lastRun: null,
-        success: this.ensureNumber(projectData.success),
-        failed: this.ensureNumber(projectData.failed),
+        lastRun: now,
+        success: 0,
+        failed: 0,
         settings: {
           entireScraping: Boolean(projectData.settings.entireScraping),
           highPriority: Boolean(projectData.settings.highPriority),
@@ -52,6 +52,7 @@ class ProjectModel {
         },
         queryCount: this.ensureNumber(projectData.queryCount),
         queryIds: Array.isArray(projectData.queryIds) ? projectData.queryIds : [],
+        // Store all tasks from scraping result under this single project
         scrapingTasks: Array.isArray(projectData.scrapingTasks) ? projectData.scrapingTasks.map(task => ({
           taskArn: String(task.taskArn || ''),
           taskDefinitionArn: String(task.taskDefinitionArn || ''),

@@ -89,54 +89,110 @@ const changePasswordSchema = [
 ];
 
 const createProjectSchema = [
-  check('projectName')
+  check('name')
     .trim()
     .notEmpty()
     .withMessage('Project name is required')
     .isLength({ max: 200 })
     .withMessage('Project name must not exceed 200 characters'),
 
-  check('entireScraping')
-    .optional()
+  check('settings')
+    .isObject()
+    .withMessage('Settings must be an object'),
+
+  check('settings.entireScraping')
     .isBoolean()
     .withMessage('Entire scraping must be a boolean'),
 
-  check('highPriority')
-    .optional()
+  check('settings.highPriority')
     .isBoolean()
     .withMessage('High priority must be a boolean'),
 
-  check('taskCount')
-    .notEmpty()
-    .withMessage('Task count is required')
+  check('settings.taskCount')
     .isInt({ min: 1 })
     .withMessage('Task count must be a positive integer'),
 
-  check('startDate')
-    .notEmpty()
-    .withMessage('Start date is required')
+  check('settings.startDate')
     .isISO8601()
     .withMessage('Invalid start date format'),
 
-  check('customQuery')
+  check('settings.customQuery')
     .optional()
     .isString()
     .withMessage('Custom query must be a string'),
 
-  check('selectedStates')
-    .optional()
-    .isArray()
-    .withMessage('Selected states must be an array'),
+  check('filters')
+    .isObject()
+    .withMessage('Filters must be an object'),
 
-  check('cities')
-    .optional()
+  check('filters.states')
+    .isArray()
+    .withMessage('States must be an array'),
+
+  check('filters.cities')
     .isArray()
     .withMessage('Cities must be an array'),
 
-  check('businessTypes')
-    .optional()
+  check('filters.businessTypes')
     .isArray()
     .withMessage('Business types must be an array'),
+
+  check('queryCount')
+    .isInt({ min: 0 })
+    .withMessage('Query count must be a non-negative integer'),
+
+  check('queryIds')
+    .isArray()
+    .withMessage('Query IDs must be an array'),
+
+  check('scrapingTasks')
+    .isArray()
+    .withMessage('Scraping tasks must be an array'),
+
+  check('scrapingTasks.*.taskArn')
+    .isString()
+    .withMessage('Task ARN must be a string'),
+
+  check('scrapingTasks.*.taskDefinitionArn')
+    .isString()
+    .withMessage('Task definition ARN must be a string'),
+
+  check('scrapingTasks.*.lastStatus')
+    .isString()
+    .withMessage('Last status must be a string'),
+
+  check('scrapingTasks.*.createdAt')
+    .optional()
+    .isString()
+    .withMessage('Created at must be a string'),
+
+  check('scrapingTasks.*.desiredStatus')
+    .isString()
+    .withMessage('Desired status must be a string'),
+
+  check('scrapingTasks.*.group')
+    .optional()
+    .isString()
+    .withMessage('Group must be a string'),
+
+  check('scrapingTasks.*.launchType')
+    .isString()
+    .withMessage('Launch type must be a string'),
+
+  check('scrapingTasks.*.containers')
+    .optional()
+    .isArray()
+    .withMessage('Containers must be an array'),
+
+  check('scrapingTasks.*.containers.*.name')
+    .optional()
+    .isString()
+    .withMessage('Container name must be a string'),
+
+  check('scrapingTasks.*.containers.*.lastStatus')
+    .optional()
+    .isString()
+    .withMessage('Container last status must be a string'),
 ];
 
 const updateProjectStatusSchema = [
