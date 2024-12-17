@@ -10,6 +10,7 @@ import {
   Menu,
   MenuItem,
   Button,
+  Chip,
 } from '@mui/material';
 import { DataGrid, gridClasses } from '@mui/x-data-grid';
 import {
@@ -22,15 +23,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../../../redux/slices/authSlice';
 import { createProject, fetchProjects, selectProjects, selectProjectsLoading } from '../../../redux/slices/projectsSlice';
 import NewProjectModal from './NewProjectModal';
-
-// Sample data
-const rows = [
-  { id: 1, name: 'Project 1', status: 'Active', lastRun: '2024-02-20', success: 15, failed: 2 },
-  { id: 2, name: 'Project 2', status: 'Paused', lastRun: '2024-02-19', success: 25, failed: 1 },
-  { id: 3, name: 'Project 3', status: 'Active', lastRun: '2024-02-18', success: 10, failed: 0 },
-  { id: 4, name: 'Project 4', status: 'Completed', lastRun: '2024-02-17', success: 30, failed: 3 },
-  { id: 5, name: 'Project 5', status: 'Active', lastRun: '2024-02-16', success: 20, failed: 1 },
-];
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -94,13 +86,82 @@ const Dashboard = () => {
     navigate(`/dashboard/projects/${params.row.id}`);
   };
 
+  const getStatusColor = (status) => {
+    switch (status.toLowerCase()) {
+      case 'running':
+        return 'success';
+      case 'paused':
+        return 'warning';
+      case 'failed':
+        return 'error';
+      case 'completed':
+        return 'info';
+      default:
+        return 'default';
+    }
+  };
+
   const columns = [
     { field: 'id', headerName: 'ID', width: 90 },
     { field: 'name', headerName: 'Project Name', width: 200 },
-    { field: 'status', headerName: 'Status', width: 130 },
-    { field: 'lastRun', headerName: 'Last Run', width: 130 },
-    { field: 'success', headerName: 'Successful Runs', width: 150 },
-    { field: 'failed', headerName: 'Failed Runs', width: 130 },
+    { 
+      field: 'status', 
+      headerName: 'Status', 
+      width: 130,
+      renderCell: (params) => (
+        <Chip
+          label={params.value}
+          color={getStatusColor(params.value)}
+          size="small"
+        />
+      )
+    },
+    { 
+      field: 'settings', 
+      headerName: 'Task Count', 
+      width: 100,
+      valueGetter: (params) => params.row.settings?.taskCount || 0
+    },
+    { 
+      field: 'queryCount', 
+      headerName: 'Total Queries', 
+      width: 120,
+      valueGetter: (params) => params.row.queryCount || 0
+    },
+    {
+      field: 'scrapingTasks',
+      headerName: 'Running Tasks',
+      width: 120,
+      valueGetter: (params) => 
+        params.row.scrapingTasks?.filter(task => 
+          task.lastStatus === 'RUNNING' || task.lastStatus === 'PENDING'
+        ).length || 0
+    },
+    {
+      field: 'success',
+      headerName: 'Completed Tasks',
+      width: 130,
+      valueGetter: (params) => 
+        params.row.scrapingTasks?.filter(task => 
+          task.lastStatus === 'STOPPED'
+        ).length || 0
+    },
+    {
+      field: 'failed',
+      headerName: 'Failed Tasks',
+      width: 100,
+      valueGetter: (params) => 
+        params.row.scrapingTasks?.filter(task => 
+          task.lastStatus === 'FAILED'
+        ).length || 0
+    },
+    {
+      field: 'updatedAt',
+      headerName: 'Last Updated',
+      width: 180,
+      valueGetter: (params) => 
+        params.row.updatedAt ? new Date(params.row.updatedAt).toLocaleString() : 'N/A'
+    },
   ];
 
   return (
@@ -164,7 +225,7 @@ const Dashboard = () => {
           
           <div style={{ height: 400, width: '100%' }}>
             <DataGrid
-              rows={projects.length > 0 ? projects : rows}
+              rows={projects}
               columns={columns}
               pageSize={5}
               rowsPerPageOptions={[5]}

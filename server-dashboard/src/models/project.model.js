@@ -19,33 +19,52 @@ class ProjectModel {
     return items;
   }
 
+  // Helper function to ensure numeric values
+  ensureNumber(value) {
+    if (value === null || value === undefined) return 0;
+    const num = Number(value);
+    return isNaN(num) ? 0 : num;
+  }
+
   async createProject(projectData) {
     try {
       const now = new Date().toISOString();
       const project = {
         id: uuidv4(),
-        name: projectData.projectName,
-        status: "pending",
+        name: projectData.name,
+        status: projectData.status || "pending",
         createdAt: now,
         updatedAt: now,
         lastRun: null,
-        success: 0,
-        failed: 0,
+        success: this.ensureNumber(projectData.success),
+        failed: this.ensureNumber(projectData.failed),
         settings: {
-          entireScraping: projectData.entireScraping,
-          highPriority: projectData.highPriority,
-          taskCount: parseInt(projectData.taskCount),
-          startDate: projectData.startDate,
-          customQuery: projectData.customQuery || "",
+          entireScraping: Boolean(projectData.settings.entireScraping),
+          highPriority: Boolean(projectData.settings.highPriority),
+          taskCount: this.ensureNumber(projectData.settings.taskCount),
+          startDate: projectData.settings.startDate,
+          customQuery: projectData.settings.customQuery || "",
         },
         filters: {
-          states: projectData.selectedStates || [],
-          cities: projectData.cities || [],
-          businessTypes: projectData.businessTypes || [],
+          states: Array.isArray(projectData.filters.states) ? projectData.filters.states : [],
+          cities: Array.isArray(projectData.filters.cities) ? projectData.filters.cities : [],
+          businessTypes: Array.isArray(projectData.filters.businessTypes) ? projectData.filters.businessTypes : [],
         },
-        queryCount: projectData.queryCount,
-        queryIds: projectData.queryIds || [],
-        scrapingTasks: projectData.scrapingTasks || [],
+        queryCount: this.ensureNumber(projectData.queryCount),
+        queryIds: Array.isArray(projectData.queryIds) ? projectData.queryIds : [],
+        scrapingTasks: Array.isArray(projectData.scrapingTasks) ? projectData.scrapingTasks.map(task => ({
+          taskArn: String(task.taskArn || ''),
+          taskDefinitionArn: String(task.taskDefinitionArn || ''),
+          lastStatus: String(task.lastStatus || ''),
+          createdAt: String(task.createdAt || ''),
+          desiredStatus: String(task.desiredStatus || ''),
+          group: String(task.group || ''),
+          launchType: String(task.launchType || ''),
+          containers: Array.isArray(task.containers) ? task.containers.map(container => ({
+            name: String(container.name || ''),
+            lastStatus: String(container.lastStatus || ''),
+          })) : [],
+        })) : [],
       };
 
       const params = {
@@ -100,7 +119,11 @@ class ProjectModel {
         if (key !== "id") {
           updateExpressionParts.push(`#field${index} = :value${index}`);
           expressionAttributeNames[`#field${index}`] = key;
-          expressionAttributeValues[`:value${index}`] = value;
+          if (typeof value === 'number') {
+            expressionAttributeValues[`:value${index}`] = this.ensureNumber(value);
+          } else {
+            expressionAttributeValues[`:value${index}`] = value;
+          }
         }
       });
 
@@ -149,8 +172,8 @@ class ProjectModel {
       const updateData = {
         status,
         lastRun: new Date().toISOString(),
-        success: project.success + (success ? 1 : 0),
-        failed: project.failed + (success ? 0 : 1),
+        success: this.ensureNumber(project.success) + (success ? 1 : 0),
+        failed: this.ensureNumber(project.failed) + (success ? 0 : 1),
       };
 
       return await this.updateProject(id, updateData);

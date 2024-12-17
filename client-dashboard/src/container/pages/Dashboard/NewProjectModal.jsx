@@ -32,6 +32,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import estimateService from '../../../services/estimate.service';
+import projectService from '../../../services/project.service';
 import dayjs from 'dayjs';
 
 const businessTypes = [
@@ -336,22 +337,38 @@ const NewProjectModal = ({ open, onClose, onSubmit }) => {
         return;
       }
 
-      // Start scraping tasks with the query list
+      // First start scraping tasks with the query list
       const scrapingResult = await estimateService.startScraping(
         formData.taskCount,
         queryIds,
         formData.startDate.toDate()
       );
 
-      const finalData = {
-        ...formData,
+      // Create project with scraping result data
+      const projectData = {
+        name: formData.projectName,
+        status: 'running',
+        settings: {
+          entireScraping: formData.entireScraping,
+          highPriority: formData.highPriority,
+          taskCount: formData.taskCount,
+          startDate: formData.startDate.toISOString(),
+          customQuery: formData.customQuery || '',
+        },
+        filters: {
+          states: formData.selectedStates,
+          cities: selectedCities,
+          businessTypes: selectedBusinessTypes,
+        },
         queryCount,
-        cities: selectedCities,
-        businessTypes: selectedBusinessTypes,
-        scrapingTasks: scrapingResult.tasks
+        queryIds,
+        scrapingTasks: scrapingResult.tasks,
       };
 
-      onSubmit(finalData);
+      // Save project to database
+      const savedProject = await projectService.createProject(projectData);
+
+      onSubmit(savedProject);
       onClose();
     } catch (err) {
       setError('Failed to create project. Please try again.');
