@@ -4,7 +4,6 @@ const logger = require("../utils/logger");
 const estimateModel = require("../models/estimate.model");
 const ecsService = require("../services/ecs.service");
 const projectModel = require("../models/project.model");
-const { DescribeTasksCommand } = require("@aws-sdk/client-ecs");
 
 // Get all unique states
 router.get("/getStates", async (req, res) => {
@@ -126,6 +125,41 @@ router.get("/taskPerformance", async (req, res) => {
     // Get task performance data from ECS service
     const performanceData = await ecsService.getTasksPerformance(start, end);
 
+    // Update task statuses in projects
+    const projects = await projectModel.getProjects();
+    for (const project of projects) {
+      let statusUpdated = false;
+      const updatedTasks = project.scrapingTasks.map(projectTask => {
+        const taskData = performanceData.find(t => t.taskArn === projectTask.taskArn);
+        if (taskData) {
+          statusUpdated = true;
+          let newStatus;
+          switch (taskData.status) {
+            case 'RUNNING':
+              newStatus = 'Running';
+              break;
+            case 'STOPPED':
+              newStatus = projectTask.lastStatus === 'Running' ? 'Successful' : projectTask.lastStatus;
+              break;
+            case 'FAILED':
+              newStatus = 'Failed';
+              break;
+            default:
+              newStatus = projectTask.lastStatus;
+          }
+          return { ...projectTask, lastStatus: newStatus };
+        }
+        return projectTask;
+      });
+
+      if (statusUpdated) {
+        await projectModel.updateProject(project.id, {
+          scrapingTasks: updatedTasks,
+          status: projectModel.calculateProjectStatus(updatedTasks)
+        });
+      }
+    }
+
     res.json({
       message: "Successfully retrieved task performance data",
       data: performanceData,
@@ -138,42 +172,22 @@ router.get("/taskPerformance", async (req, res) => {
 
 // Start task
 router.post("/startTask", async (req, res) => {
-  const { taskId } = req.body;
+  const { taskId, projectId } = req.body;
 
   if (!taskId) {
     return res.status(400).json({ error: "Task ID is required" });
   }
 
+  if (!projectId) {
+    return res.status(400).json({ error: "Project ID is required" });
+  }
+
   try {
-    // Get task details first
-    const describeTaskCommand = new DescribeTasksCommand({
-      cluster: ecsService.clusterName,
-      tasks: [taskId],
-    });
-
-    const taskInfo = await ecsService.client.send(describeTaskCommand);
-    if (!taskInfo.tasks || taskInfo.tasks.length === 0) {
-      throw new Error(`Task ${taskId} not found`);
-    }
-
-    const task = taskInfo.tasks[0];
-
-    // Get the query data from the task's environment variables
-    const queryData = task.overrides?.containerOverrides?.[0]?.environment?.find(
-      env => env.name === 'QUERY_DATA'
-    )?.value;
-
-    if (!queryData) {
-      throw new Error('No query data found for task');
-    }
-
-    // Parse the query data and start a new task
-    const queries = JSON.parse(queryData);
-    const newTask = await ecsService.runTasks(1, Array.isArray(queries) ? queries : [queries]);
-
+    await projectModel.updateTaskStatus(projectId, taskId, "Running");
     res.json({
       message: "Task started successfully",
-      task: newTask[0],
+      taskId,
+      status: "Running"
     });
   } catch (error) {
     logger.error("Error starting task:", error);
@@ -183,15 +197,24 @@ router.post("/startTask", async (req, res) => {
 
 // Stop task
 router.post("/stopTask", async (req, res) => {
-  const { taskId } = req.body;
+  const { taskId, projectId } = req.body;
 
   if (!taskId) {
     return res.status(400).json({ error: "Task ID is required" });
   }
 
+  if (!projectId) {
+    return res.status(400).json({ error: "Project ID is required" });
+  }
+
   try {
     await ecsService.stopTask(taskId);
-    res.json({ message: "Task stopped successfully" });
+    await projectModel.updateTaskStatus(projectId, taskId, "Stopped", "manual");
+    res.json({ 
+      message: "Task stopped successfully",
+      taskId,
+      status: "Stopped"
+    });
   } catch (error) {
     logger.error("Error stopping task:", error);
     res.status(500).json({ error: "Failed to stop task" });
@@ -200,17 +223,23 @@ router.post("/stopTask", async (req, res) => {
 
 // Restart task
 router.post("/restartTask", async (req, res) => {
-  const { taskId } = req.body;
+  const { taskId, projectId } = req.body;
 
   if (!taskId) {
     return res.status(400).json({ error: "Task ID is required" });
   }
 
+  if (!projectId) {
+    return res.status(400).json({ error: "Project ID is required" });
+  }
+
   try {
     const newTask = await ecsService.restartTask(taskId);
+    await projectModel.updateTaskStatus(projectId, taskId, "Running");
     res.json({
       message: "Task restarted successfully",
-      task: newTask,
+      taskId: newTask.taskArn,
+      status: "Running"
     });
   } catch (error) {
     logger.error("Error restarting task:", error);

@@ -36,6 +36,12 @@ const Dashboard = () => {
 
   useEffect(() => {
     dispatch(fetchProjects());
+    // Set up polling for project updates
+    const interval = setInterval(() => {
+      dispatch(fetchProjects());
+    }, 30000); // Poll every 30 seconds
+
+    return () => clearInterval(interval);
   }, [dispatch]);
 
   const handleMenu = (event) => {
@@ -96,7 +102,7 @@ const Dashboard = () => {
     switch (status.toLowerCase()) {
       case 'running':
         return 'success';
-      case 'paused':
+      case 'pending':
         return 'warning';
       case 'failed':
         return 'error';
@@ -135,38 +141,38 @@ const Dashboard = () => {
       valueGetter: (params) => params.row.queryCount || 0
     },
     {
-      field: 'scrapingTasks',
+      field: 'runningTasks',
       headerName: 'Running Tasks',
       width: 120,
       valueGetter: (params) => 
         params.row.scrapingTasks?.filter(task => 
-          task.lastStatus === 'RUNNING' || task.lastStatus === 'PENDING'
+          task.lastStatus === "Running"
         ).length || 0
     },
     {
-      field: 'success',
+      field: 'completedTasks',
       headerName: 'Completed Tasks',
       width: 130,
       valueGetter: (params) => 
         params.row.scrapingTasks?.filter(task => 
-          task.lastStatus === 'STOPPED'
+          task.lastStatus === "Successful"
         ).length || 0
     },
     {
-      field: 'failed',
+      field: 'failedTasks',
       headerName: 'Failed Tasks',
       width: 100,
       valueGetter: (params) => 
         params.row.scrapingTasks?.filter(task => 
-          task.lastStatus === 'FAILED'
+          task.lastStatus === "Failed"
         ).length || 0
     },
     {
       field: 'updatedAt',
       headerName: 'Last Updated',
       width: 180,
-      valueGetter: (params) => 
-        params.row.updatedAt ? new Date(params.row.updatedAt).toLocaleString() : 'N/A'
+      valueFormatter: (params) => 
+        params.value ? new Date(params.value).toLocaleString() : 'N/A'
     },
   ];
 

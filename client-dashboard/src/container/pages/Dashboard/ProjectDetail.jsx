@@ -31,10 +31,13 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import estimateService from '../../../services/estimate.service';
+import { useDispatch } from 'react-redux';
+import { fetchProjects } from '../../../redux/slices/projectsSlice';
 
 const ProjectDetail = () => {
   const navigate = useNavigate();
-  const { id } = useParams();
+  const dispatch = useDispatch();
+  const { id: projectId } = useParams();
   const [selectedTask, setSelectedTask] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [performanceData, setPerformanceData] = useState([]);
@@ -50,39 +53,50 @@ const ProjectDetail = () => {
     setNotification({ ...notification, open: false });
   };
 
+  const updateTasksAndProject = async () => {
+    try {
+      const data = await estimateService.getTaskPerformance();
+      console.log('Raw performance data:', data);
+      
+      const transformedTasks = data.map(task => ({
+        id: task.taskId,
+        name: `Task-${task.taskId.slice(-6)}`,
+        cpuPerformance: task.cpu.current || 0,
+        memoryPerformance: task.memory.current || 0,
+        status: task.status,
+        startedAt: task.startedAt,
+        rawData: task
+      }));
+      setTasks(transformedTasks);
+
+      // Update project status in Dashboard
+      dispatch(fetchProjects());
+
+      // Update selected task data if one is selected
+      if (selectedTask) {
+        const selectedTaskData = data.find(t => t.taskId === selectedTask.id);
+        if (selectedTaskData) {
+          console.log('Selected task performance data:', selectedTaskData);
+          const chartData = selectedTaskData.cpu.history.map((cpuPoint, index) => ({
+            time: new Date(cpuPoint.timestamp).toLocaleTimeString(),
+            cpu: cpuPoint.value,
+            memory: selectedTaskData.memory.history[index]?.value || 0,
+          }));
+          setPerformanceData(chartData);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating tasks:', error);
+      showNotification('Failed to update task data', 'error');
+    }
+  };
+
   // Fetch task performance data
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const data = await estimateService.getTaskPerformance();
-        console.log('Raw performance data:', data);
-        
-        // Transform task data for the table
-        const transformedTasks = data.map(task => ({
-          id: task.taskId,
-          name: `Task-${task.taskId.slice(-6)}`,
-          cpuPerformance: task.cpu.current || 0,
-          memoryPerformance: task.memory.current || 0,
-          status: task.status.toLowerCase(),
-          startedAt: task.startedAt,
-          rawData: task // Keep raw data for chart
-        }));
-        setTasks(transformedTasks);
-
-        // If a task is selected, update its performance data
-        if (selectedTask) {
-          const selectedTaskData = data.find(t => t.taskId === selectedTask.id);
-          if (selectedTaskData) {
-            console.log('Selected task performance data:', selectedTaskData);
-            const chartData = selectedTaskData.cpu.history.map((cpuPoint, index) => ({
-              time: new Date(cpuPoint.timestamp).toLocaleTimeString(),
-              cpu: cpuPoint.value,
-              memory: selectedTaskData.memory.history[index]?.value || 0,
-            }));
-            setPerformanceData(chartData);
-          }
-        }
+        await updateTasksAndProject();
       } catch (error) {
         console.error('Error fetching task performance:', error);
         showNotification('Failed to fetch task performance data', 'error');
@@ -98,7 +112,7 @@ const ProjectDetail = () => {
     const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
 
     return () => clearInterval(interval);
-  }, [selectedTask]);
+  }, [dispatch, projectId]);
 
   const columns = [
     { field: 'name', headerName: 'Task Name', width: 200 },
@@ -122,10 +136,12 @@ const ProjectDetail = () => {
         <Box
           sx={{
             backgroundColor:
-              params.value === 'running'
+              params.value === 'Running'
                 ? 'success.main'
-                : params.value === 'pending'
+                : params.value === 'Pending'
                 ? 'warning.main'
+                : params.value === 'Successful'
+                ? 'info.main'
                 : 'error.main',
             color: 'white',
             padding: '4px 8px',
@@ -150,7 +166,7 @@ const ProjectDetail = () => {
       width: 200,
       renderCell: (params) => (
         <ButtonGroup variant="contained" size="small">
-          {params.row.status === 'running' ? (
+          {params.row.status === 'Running' ? (
             <Button
               startIcon={<StopIcon />}
               color="error"
@@ -164,7 +180,7 @@ const ProjectDetail = () => {
               startIcon={<PlayArrowIcon />}
               color="success"
               onClick={() => handleStart(params.row.id)}
-              disabled={actionLoading}
+              disabled={actionLoading || params.row.status === 'Successful' || params.row.status === 'Failed'}
             >
               Start
             </Button>
@@ -184,20 +200,9 @@ const ProjectDetail = () => {
   const handleStart = async (taskId) => {
     try {
       setActionLoading(true);
-      await estimateService.startTask(taskId);
+      await estimateService.startTask(taskId, projectId);
       showNotification('Task started successfully', 'success');
-      // Refresh data
-      const data = await estimateService.getTaskPerformance();
-      const transformedTasks = data.map(task => ({
-        id: task.taskId,
-        name: `Task-${task.taskId.slice(-6)}`,
-        cpuPerformance: task.cpu.current || 0,
-        memoryPerformance: task.memory.current || 0,
-        status: task.status.toLowerCase(),
-        startedAt: task.startedAt,
-        rawData: task
-      }));
-      setTasks(transformedTasks);
+      await updateTasksAndProject();
     } catch (error) {
       console.error('Error starting task:', error);
       showNotification('Failed to start task', 'error');
@@ -209,20 +214,9 @@ const ProjectDetail = () => {
   const handleStop = async (taskId) => {
     try {
       setActionLoading(true);
-      await estimateService.stopTask(taskId);
+      await estimateService.stopTask(taskId, projectId, 'manual');
       showNotification('Task stopped successfully', 'success');
-      // Refresh data
-      const data = await estimateService.getTaskPerformance();
-      const transformedTasks = data.map(task => ({
-        id: task.taskId,
-        name: `Task-${task.taskId.slice(-6)}`,
-        cpuPerformance: task.cpu.current || 0,
-        memoryPerformance: task.memory.current || 0,
-        status: task.status.toLowerCase(),
-        startedAt: task.startedAt,
-        rawData: task
-      }));
-      setTasks(transformedTasks);
+      await updateTasksAndProject();
     } catch (error) {
       console.error('Error stopping task:', error);
       showNotification('Failed to stop task', 'error');
@@ -234,20 +228,9 @@ const ProjectDetail = () => {
   const handleRestart = async (taskId) => {
     try {
       setActionLoading(true);
-      await estimateService.restartTask(taskId);
+      await estimateService.restartTask(taskId, projectId);
       showNotification('Task restarted successfully', 'success');
-      // Refresh data
-      const data = await estimateService.getTaskPerformance();
-      const transformedTasks = data.map(task => ({
-        id: task.taskId,
-        name: `Task-${task.taskId.slice(-6)}`,
-        cpuPerformance: task.cpu.current || 0,
-        memoryPerformance: task.memory.current || 0,
-        status: task.status.toLowerCase(),
-        startedAt: task.startedAt,
-        rawData: task
-      }));
-      setTasks(transformedTasks);
+      await updateTasksAndProject();
     } catch (error) {
       console.error('Error restarting task:', error);
       showNotification('Failed to restart task', 'error');
@@ -272,19 +255,7 @@ const ProjectDetail = () => {
   const handleRefresh = async () => {
     try {
       setLoading(true);
-      const data = await estimateService.getTaskPerformance();
-      const transformedTasks = data.map(task => ({
-        id: task.taskId,
-        name: `Task-${task.taskId.slice(-6)}`,
-        cpuPerformance: task.cpu.current || 0,
-        memoryPerformance: task.memory.current || 0,
-        status: task.status.toLowerCase(),
-        startedAt: task.startedAt,
-        rawData: task
-      }));
-      setTasks(transformedTasks);
-      setSelectedTask(null);
-      setPerformanceData([]);
+      await updateTasksAndProject();
       showNotification('Data refreshed successfully', 'success');
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -307,7 +278,7 @@ const ProjectDetail = () => {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Project Details - {id}
+            Project Details - {projectId}
           </Typography>
         </Toolbar>
       </AppBar>

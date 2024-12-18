@@ -26,13 +26,34 @@ class ProjectModel {
     return isNaN(num) ? 0 : num;
   }
 
+  // Helper function to calculate project status based on task statuses
+  calculateProjectStatus(scrapingTasks) {
+    if (!scrapingTasks || scrapingTasks.length === 0) return "pending";
+
+    const runningCount = scrapingTasks.filter(task => 
+      task.lastStatus === "Running"
+    ).length;
+    const failedCount = scrapingTasks.filter(task => 
+      task.lastStatus === "Failed"
+    ).length;
+    const completedCount = scrapingTasks.filter(task => 
+      task.lastStatus === "Successful"
+    ).length;
+    const totalCount = scrapingTasks.length;
+
+    if (runningCount > 0) return "running";
+    if (completedCount === totalCount) return "completed";
+    if (failedCount === totalCount) return "failed";
+    return "pending";
+  }
+
   async createProject(projectData) {
     try {
       const now = new Date().toISOString();
       const project = {
         id: uuidv4(),
         name: projectData.name,
-        status: projectData.status || "running", // Set initial status to running since tasks are starting
+        status: projectData.status || "pending",
         createdAt: now,
         updatedAt: now,
         lastRun: now,
@@ -52,7 +73,6 @@ class ProjectModel {
         },
         queryCount: this.ensureNumber(projectData.queryCount),
         queryIds: Array.isArray(projectData.queryIds) ? projectData.queryIds : [],
-        // Store all tasks from scraping result under this single project
         scrapingTasks: Array.isArray(projectData.scrapingTasks) ? projectData.scrapingTasks.map(task => ({
           taskArn: String(task.taskArn || ''),
           taskDefinitionArn: String(task.taskDefinitionArn || ''),
@@ -163,6 +183,53 @@ class ProjectModel {
       return true;
     } catch (error) {
       logger.error(`Error deleting project ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async updateTaskStatus(projectId, taskArn, newStatus, reason = 'normal') {
+    try {
+      // Get current project
+      const project = await this.getProjectById(projectId);
+      if (!project) {
+        throw new Error(`Project ${projectId} not found`);
+      }
+
+      // Map status based on reason
+      let mappedStatus;
+      if (reason === 'manual') {
+        mappedStatus = 'Stopped';
+      } else if (reason === 'error') {
+        mappedStatus = 'Failed';
+      } else if (reason === 'completed') {
+        mappedStatus = 'Successful';
+      } else {
+        mappedStatus = newStatus;
+      }
+
+      // Update task status in scrapingTasks array
+      const updatedTasks = project.scrapingTasks.map(task => {
+        if (task.taskArn === taskArn) {
+          return {
+            ...task,
+            lastStatus: mappedStatus,
+          };
+        }
+        return task;
+      });
+
+      // Calculate new project status
+      const newProjectStatus = this.calculateProjectStatus(updatedTasks);
+
+      // Update project with new task statuses and project status
+      const updateData = {
+        scrapingTasks: updatedTasks,
+        status: newProjectStatus,
+      };
+
+      return await this.updateProject(projectId, updateData);
+    } catch (error) {
+      logger.error(`Error updating task status for project ${projectId}:`, error);
       throw error;
     }
   }
