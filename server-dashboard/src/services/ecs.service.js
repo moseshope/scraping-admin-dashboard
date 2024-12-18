@@ -215,21 +215,36 @@ class ECSService {
 
   async getTasksPerformance(startTime, endTime) {
     try {
+      // Get all tasks including stopped ones
       const listTasksCommand = new ListTasksCommand({
         cluster: this.clusterName,
+        desiredStatus: "STOPPED",
       });
 
-      const tasksList = await this.client.send(listTasksCommand);
-      logger.info("Tasks found:", JSON.stringify(tasksList, null, 2));
+      const runningTasksCommand = new ListTasksCommand({
+        cluster: this.clusterName,
+        desiredStatus: "RUNNING",
+      });
 
-      if (!tasksList.taskArns || tasksList.taskArns.length === 0) {
+      const [stoppedTasksList, runningTasksList] = await Promise.all([
+        this.client.send(listTasksCommand),
+        this.client.send(runningTasksCommand),
+      ]);
+
+      const allTaskArns = [
+        ...(stoppedTasksList.taskArns || []),
+        ...(runningTasksList.taskArns || []),
+      ];
+
+      if (allTaskArns.length === 0) {
         logger.info("No tasks found in cluster");
         return [];
       }
 
+      // Get details for all tasks
       const describeTasksCommand = new DescribeTasksCommand({
         cluster: this.clusterName,
-        tasks: tasksList.taskArns,
+        tasks: allTaskArns,
       });
 
       const tasksInfo = await this.client.send(describeTasksCommand);

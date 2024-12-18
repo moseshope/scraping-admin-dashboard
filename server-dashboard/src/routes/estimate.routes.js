@@ -5,6 +5,30 @@ const estimateModel = require("../models/estimate.model");
 const ecsService = require("../services/ecs.service");
 const projectModel = require("../models/project.model");
 
+// Get tasks by project ID
+router.get("/getTasksByProjectId/:projectId", async (req, res) => {
+  const { projectId } = req.params;
+
+  if (!projectId) {
+    return res.status(400).json({ error: "Project ID is required" });
+  }
+
+  try {
+    const project = await projectModel.getProjectById(projectId);
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    res.json({
+      message: "Successfully retrieved project tasks",
+      tasks: project.scrapingTasks || [],
+    });
+  } catch (error) {
+    logger.error(`Error getting tasks for project ${projectId}:`, error);
+    res.status(500).json({ error: "Failed to get project tasks" });
+  }
+});
+
 // Get all unique states
 router.get("/getStates", async (req, res) => {
   try {
@@ -122,12 +146,22 @@ router.get("/taskPerformance", async (req, res) => {
         .json({ error: "Start time must be before end time" });
     }
 
-    // Get task performance data from ECS service
+    // Get all projects to get task ARNs
+    const projects = await projectModel.getProjects();
+    const allTaskArns = projects.reduce((arns, project) => {
+      if (project.scrapingTasks) {
+        arns.push(...project.scrapingTasks.map(task => task.taskArn));
+      }
+      return arns;
+    }, []);
+
+    // Get performance data for all tasks
     const performanceData = await ecsService.getTasksPerformance(start, end);
 
     // Update task statuses in projects
-    const projects = await projectModel.getProjects();
     for (const project of projects) {
+      if (!project.scrapingTasks) continue;
+
       let statusUpdated = false;
       const updatedTasks = project.scrapingTasks.map(projectTask => {
         const taskData = performanceData.find(t => t.taskArn === projectTask.taskArn);
@@ -139,6 +173,7 @@ router.get("/taskPerformance", async (req, res) => {
               newStatus = 'Running';
               break;
             case 'STOPPED':
+              // If task was running before and now stopped, mark as successful
               newStatus = projectTask.lastStatus === 'Running' ? 'Successful' : projectTask.lastStatus;
               break;
             case 'FAILED':
@@ -160,9 +195,15 @@ router.get("/taskPerformance", async (req, res) => {
       }
     }
 
+    // Return only performance metrics
     res.json({
       message: "Successfully retrieved task performance data",
-      data: performanceData,
+      data: performanceData.map(task => ({
+        taskArn: task.taskArn,
+        cpu: task.cpu,
+        memory: task.memory,
+        status: task.status
+      })),
     });
   } catch (error) {
     logger.error("Error getting task performance:", error);
@@ -208,8 +249,12 @@ router.post("/stopTask", async (req, res) => {
   }
 
   try {
+    // First update the task status in the project table
+    await projectModel.updateTaskStatus(projectId, taskId, "Stopped");
+
+    // Then stop the task in AWS ECS
     await ecsService.stopTask(taskId);
-    await projectModel.updateTaskStatus(projectId, taskId, "Stopped", "manual");
+
     res.json({ 
       message: "Task stopped successfully",
       taskId,

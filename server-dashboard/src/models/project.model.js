@@ -30,20 +30,16 @@ class ProjectModel {
   calculateProjectStatus(scrapingTasks) {
     if (!scrapingTasks || scrapingTasks.length === 0) return "pending";
 
-    const runningCount = scrapingTasks.filter(task => 
-      task.lastStatus === "Running"
-    ).length;
-    const failedCount = scrapingTasks.filter(task => 
-      task.lastStatus === "Failed"
-    ).length;
-    const completedCount = scrapingTasks.filter(task => 
-      task.lastStatus === "Successful"
-    ).length;
-    const totalCount = scrapingTasks.length;
+    const taskStatuses = scrapingTasks.map(task => task.lastStatus);
+    const allStopped = taskStatuses.every(status => status === "Stopped");
+    const allFailed = taskStatuses.every(status => status === "Failed");
+    const allSuccessful = taskStatuses.every(status => status === "Successful");
+    const hasRunning = taskStatuses.some(status => status === "Running" || status === "RUNNING");
 
-    if (runningCount > 0) return "running";
-    if (completedCount === totalCount) return "completed";
-    if (failedCount === totalCount) return "failed";
+    if (allStopped) return "Stopped";
+    if (allFailed) return "Failed";
+    if (allSuccessful) return "Successful";
+    if (hasRunning) return "Running";
     return "pending";
   }
 
@@ -187,7 +183,7 @@ class ProjectModel {
     }
   }
 
-  async updateTaskStatus(projectId, taskArn, newStatus, reason = 'normal') {
+  async updateTaskStatus(projectId, taskArn, newStatus) {
     try {
       // Get current project
       const project = await this.getProjectById(projectId);
@@ -195,24 +191,12 @@ class ProjectModel {
         throw new Error(`Project ${projectId} not found`);
       }
 
-      // Map status based on reason
-      let mappedStatus;
-      if (reason === 'manual') {
-        mappedStatus = 'Stopped';
-      } else if (reason === 'error') {
-        mappedStatus = 'Failed';
-      } else if (reason === 'completed') {
-        mappedStatus = 'Successful';
-      } else {
-        mappedStatus = newStatus;
-      }
-
       // Update task status in scrapingTasks array
       const updatedTasks = project.scrapingTasks.map(task => {
         if (task.taskArn === taskArn) {
           return {
             ...task,
-            lastStatus: mappedStatus,
+            lastStatus: newStatus === "STOPPED" ? "Stopped" : newStatus,
           };
         }
         return task;

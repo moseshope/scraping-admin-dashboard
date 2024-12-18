@@ -1,6 +1,17 @@
 import api from "./api";
 
 const estimateService = {
+  // Get tasks by project ID
+  getTasksByProjectId: async (projectId) => {
+    try {
+      const response = await api.get(`/dev/getTasksByProjectId/${projectId}`);
+      return response.data.tasks;
+    } catch (error) {
+      console.error("Error fetching project tasks:", error);
+      throw error;
+    }
+  },
+
   // Get all unique states
   getStates: async () => {
     try {
@@ -150,9 +161,9 @@ const estimateService = {
   },
 
   // Start task
-  startTask: async (taskId) => {
+  startTask: async (taskId, projectId) => {
     try {
-      const response = await api.post("/dev/startTask", { taskId });
+      const response = await api.post("/dev/startTask", { taskId, projectId });
       return response.data;
     } catch (error) {
       console.error("Error starting task:", error);
@@ -161,9 +172,9 @@ const estimateService = {
   },
 
   // Stop task
-  stopTask: async (taskId) => {
+  stopTask: async (taskId, projectId) => {
     try {
-      const response = await api.post(`/dev/stopTask`, { taskId });
+      const response = await api.post(`/dev/stopTask`, { taskId, projectId });
       return response.data;
     } catch (error) {
       console.error("Error stopping task:", error);
@@ -172,9 +183,9 @@ const estimateService = {
   },
 
   // Restart task
-  restartTask: async (taskId) => {
+  restartTask: async (taskId, projectId) => {
     try {
-      const response = await api.post(`/dev/restartTask`, { taskId });
+      const response = await api.post(`/dev/restartTask`, { taskId, projectId });
       return response.data;
     } catch (error) {
       console.error("Error restarting task:", error);
