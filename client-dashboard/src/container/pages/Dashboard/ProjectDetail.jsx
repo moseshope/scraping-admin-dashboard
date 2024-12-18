@@ -53,6 +53,82 @@ const ProjectDetail = () => {
     setNotification({ ...notification, open: false });
   };
 
+  const getStatusColor = (status) => {
+    const normalizedStatus = status?.toUpperCase();
+    switch (normalizedStatus) {
+      case 'RUNNING':
+        return '#4caf50'; // Green
+      case 'PROVISIONING':
+        return '#ff9800'; // Orange
+      case 'STOPPED':
+        return '#2196f3'; // Blue
+      case 'FAILED':
+        return '#f44336'; // Red
+      case 'SUCCESSFUL':
+        return '#81c784'; // Light Green
+      default:
+        return '#9e9e9e'; // Grey
+    }
+  };
+
+  const renderActionButtons = (status, taskId) => {
+    const normalizedStatus = status?.toUpperCase();
+    switch (normalizedStatus) {
+      case 'RUNNING':
+        return (
+          <ButtonGroup variant="contained" size="small">
+            <Button
+              startIcon={<StopIcon />}
+              color="error"
+              onClick={() => handleStop(taskId)}
+              disabled={actionLoading}
+            >
+              Stop
+            </Button>
+            <Button
+              startIcon={<RefreshIcon />}
+              onClick={() => handleRestart(taskId)}
+              disabled={actionLoading}
+              color="primary"
+            >
+              Restart
+            </Button>
+          </ButtonGroup>
+        );
+      case 'STOPPED':
+        return (
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<PlayArrowIcon />}
+            color="success"
+            onClick={() => handleStart(taskId)}
+            disabled={actionLoading}
+          >
+            Start
+          </Button>
+        );
+      case 'FAILED':
+        return (
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<RefreshIcon />}
+            color="primary"
+            onClick={() => handleRestart(taskId)}
+            disabled={actionLoading}
+          >
+            Restart
+          </Button>
+        );
+      case 'SUCCESSFUL':
+      case 'PROVISIONING':
+        return null;
+      default:
+        return null;
+    }
+  };
+
   const updateTasksAndProject = async () => {
     try {
       const data = await estimateService.getTaskPerformance();
@@ -135,18 +211,11 @@ const ProjectDetail = () => {
       renderCell: (params) => (
         <Box
           sx={{
-            backgroundColor:
-              params.value === 'Running'
-                ? 'success.main'
-                : params.value === 'Pending'
-                ? 'warning.main'
-                : params.value === 'Successful'
-                ? 'info.main'
-                : 'error.main',
+            backgroundColor: getStatusColor(params.value),
             color: 'white',
             padding: '4px 8px',
             borderRadius: '4px',
-            textTransform: 'capitalize',
+            textTransform: 'uppercase',
           }}
         >
           {params.value}
@@ -164,36 +233,7 @@ const ProjectDetail = () => {
       field: 'actions',
       headerName: 'Actions',
       width: 200,
-      renderCell: (params) => (
-        <ButtonGroup variant="contained" size="small">
-          {params.row.status === 'Running' ? (
-            <Button
-              startIcon={<StopIcon />}
-              color="error"
-              onClick={() => handleStop(params.row.id)}
-              disabled={actionLoading}
-            >
-              Stop
-            </Button>
-          ) : (
-            <Button
-              startIcon={<PlayArrowIcon />}
-              color="success"
-              onClick={() => handleStart(params.row.id)}
-              disabled={actionLoading || params.row.status === 'Successful' || params.row.status === 'Failed'}
-            >
-              Start
-            </Button>
-          )}
-          <Button
-            startIcon={<RefreshIcon />}
-            onClick={() => handleRestart(params.row.id)}
-            disabled={actionLoading}
-          >
-            Restart
-          </Button>
-        </ButtonGroup>
-      ),
+      renderCell: (params) => renderActionButtons(params.row.status, params.row.id),
     },
   ];
 
