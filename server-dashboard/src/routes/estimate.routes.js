@@ -282,8 +282,49 @@ router.post("/restartTask", async (req, res) => {
   }
 
   try {
+    // First get the project to get task details
+    const project = await projectModel.getProjectById(projectId);
+    if (!project) {
+      throw new Error(`Project ${projectId} not found`);
+    }
+
+    // Find the task in the project
+    const task = project.scrapingTasks.find((t) => t.taskArn === taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found in project ${projectId}`);
+    }
+
+    // Stop the existing task if it's running
+    try {
+      await ecsService.stopTask(taskId);
+    } catch (error) {
+      logger.warn(
+        `Could not stop task ${taskId}, might already be stopped:`,
+        error
+      );
+    }
+
+    // Start a new task with the same configuration
     const newTask = await ecsService.restartTask(taskId);
-    await projectModel.updateTaskStatus(projectId, taskId, "Running");
+
+    // Update the task ARN in the project
+    const updatedTasks = project.scrapingTasks.map((t) => {
+      if (t.taskArn === taskId) {
+        return {
+          ...t,
+          taskArn: newTask.taskArn,
+          lastStatus: "Running",
+        };
+      }
+      return t;
+    });
+
+    // Update project with new task ARN and status
+    await projectModel.updateProject(projectId, {
+      scrapingTasks: updatedTasks,
+      status: projectModel.calculateProjectStatus(updatedTasks),
+    });
+
     res.json({
       message: "Task restarted successfully",
       taskId: newTask.taskArn,

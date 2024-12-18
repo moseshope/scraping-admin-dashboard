@@ -54,34 +54,75 @@ const ProjectDetail = () => {
   };
 
   const getStatusColor = (status) => {
-    return '#9e9e9e'; // Grey color for all statuses
+    const normalizedStatus = status?.toUpperCase();
+    switch (normalizedStatus) {
+      case 'RUNNING':
+        return '#4caf50'; // Green
+      case 'PROVISIONING':
+        return '#ff9800'; // Orange
+      case 'STOPPED':
+        return '#2196f3'; // Blue
+      case 'FAILED':
+        return '#f44336'; // Red
+      case 'SUCCESSFUL':
+        return '#81c784'; // Light Green
+      default:
+        return '#9e9e9e'; // Grey
+    }
   };
 
   const renderActionButtons = (status, taskId) => {
     const normalizedStatus = status?.toUpperCase();
-    if (normalizedStatus === 'RUNNING') {
-      return (
-        <ButtonGroup variant="contained" size="small">
-          <Button
-            startIcon={<StopIcon />}
-            color="error"
-            onClick={() => handleStop(taskId)}
-            disabled={actionLoading}
-          >
-            Stop
-          </Button>
-          <Button
-            startIcon={<RefreshIcon />}
-            onClick={() => handleRestart(taskId)}
-            disabled={actionLoading}
-            color="primary"
-          >
-            Restart
-          </Button>
-        </ButtonGroup>
-      );
+    switch (normalizedStatus) {
+      case 'RUNNING':
+        return (
+          <ButtonGroup variant="contained" size="small">
+            <Button
+              startIcon={<StopIcon />}
+              color="error"
+              onClick={() => handleStop(taskId)}
+              disabled={actionLoading}
+            >
+              Stop
+            </Button>
+            <Button
+              startIcon={<RefreshIcon />}
+              onClick={() => handleRestart(taskId)}
+              disabled={actionLoading}
+              color="primary"
+            >
+              Restart
+            </Button>
+          </ButtonGroup>
+        );
+      case 'STOPPED':
+      case 'FAILED':
+        return (
+          <ButtonGroup variant="contained" size="small">
+            <Button
+              startIcon={<PlayArrowIcon />}
+              color="success"
+              onClick={() => handleStart(taskId)}
+              disabled={actionLoading}
+            >
+              Start
+            </Button>
+            <Button
+              startIcon={<RefreshIcon />}
+              onClick={() => handleRestart(taskId)}
+              disabled={actionLoading}
+              color="primary"
+            >
+              Restart
+            </Button>
+          </ButtonGroup>
+        );
+      case 'SUCCESSFUL':
+      case 'PROVISIONING':
+        return null;
+      default:
+        return null;
     }
-    return null;
   };
 
   const updateTasksAndPerformance = async () => {

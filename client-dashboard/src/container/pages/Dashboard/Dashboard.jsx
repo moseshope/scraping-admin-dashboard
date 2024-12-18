@@ -36,12 +36,6 @@ const Dashboard = () => {
 
   useEffect(() => {
     dispatch(fetchProjects());
-    // Set up polling for project updates
-    const interval = setInterval(() => {
-      dispatch(fetchProjects());
-    }, 30000); // Poll every 30 seconds
-
-    return () => clearInterval(interval);
   }, [dispatch]);
 
   const handleMenu = (event) => {
@@ -78,19 +72,13 @@ const Dashboard = () => {
 
   const handleCreateProject = async (projectData) => {
     try {
-      // Create project and wait for it to complete
       const result = await dispatch(createProject(projectData)).unwrap();
       setIsNewProjectModalOpen(false);
-      
-      // Add a small delay before fetching projects to ensure the database has updated
-      setTimeout(() => {
-        dispatch(fetchProjects());
-      }, 1000);
-      
+      dispatch(fetchProjects());
       return result;
     } catch (error) {
       console.error('Failed to create project:', error);
-      throw error; // Re-throw to let the modal handle the error
+      throw error;
     }
   };
 
@@ -99,17 +87,20 @@ const Dashboard = () => {
   };
 
   const getStatusColor = (status) => {
-    switch (status.toLowerCase()) {
-      case 'running':
-        return 'success';
-      case 'pending':
-        return 'warning';
-      case 'failed':
-        return 'error';
-      case 'completed':
-        return 'info';
+    const normalizedStatus = status?.toUpperCase();
+    switch (normalizedStatus) {
+      case 'RUNNING':
+        return '#4caf50'; // Green
+      case 'PROVISIONING':
+        return '#ff9800'; // Orange
+      case 'STOPPED':
+        return '#2196f3'; // Blue
+      case 'FAILED':
+        return '#f44336'; // Red
+      case 'SUCCESSFUL':
+        return '#81c784'; // Light Green
       default:
-        return 'default';
+        return '#9e9e9e'; // Grey
     }
   };
 
@@ -121,11 +112,17 @@ const Dashboard = () => {
       headerName: 'Status', 
       width: 130,
       renderCell: (params) => (
-        <Chip
-          label={params.value}
-          color={getStatusColor(params.value)}
-          size="small"
-        />
+        <Box
+          sx={{
+            backgroundColor: getStatusColor(params.value),
+            color: 'white',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            textTransform: 'uppercase',
+          }}
+        >
+          {params.value}
+        </Box>
       )
     },
     { 
