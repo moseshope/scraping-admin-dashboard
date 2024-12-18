@@ -100,7 +100,9 @@ router.post("/startScraping", async (req, res) => {
     startDateObj.toISOString().split("T")[0];
 
   if (!isToday) {
-    return res.status(400).json({ error: "Start date must be today for immediate task execution" });
+    return res
+      .status(400)
+      .json({ error: "Start date must be today for immediate task execution" });
   }
 
   try {
@@ -150,7 +152,7 @@ router.get("/taskPerformance", async (req, res) => {
     const projects = await projectModel.getProjects();
     const allTaskArns = projects.reduce((arns, project) => {
       if (project.scrapingTasks) {
-        arns.push(...project.scrapingTasks.map(task => task.taskArn));
+        arns.push(...project.scrapingTasks.map((task) => task.taskArn));
       }
       return arns;
     }, []);
@@ -163,21 +165,22 @@ router.get("/taskPerformance", async (req, res) => {
       if (!project.scrapingTasks) continue;
 
       let statusUpdated = false;
-      const updatedTasks = project.scrapingTasks.map(projectTask => {
-        const taskData = performanceData.find(t => t.taskArn === projectTask.taskArn);
+      const updatedTasks = project.scrapingTasks.map((projectTask) => {
+        const taskData = performanceData.find(
+          (t) => t.taskArn === projectTask.taskArn
+        );
         if (taskData) {
           statusUpdated = true;
           let newStatus;
           switch (taskData.status) {
-            case 'RUNNING':
-              newStatus = 'Running';
+            case "RUNNING":
+              newStatus = "Running";
               break;
-            case 'STOPPED':
-              // If task was running before and now stopped, mark as successful
-              newStatus = projectTask.lastStatus === 'Running' ? 'Successful' : projectTask.lastStatus;
+            case "STOPPED":
+              newStatus = "Stopped";
               break;
-            case 'FAILED':
-              newStatus = 'Failed';
+            case "FAILED":
+              newStatus = "Failed";
               break;
             default:
               newStatus = projectTask.lastStatus;
@@ -190,7 +193,7 @@ router.get("/taskPerformance", async (req, res) => {
       if (statusUpdated) {
         await projectModel.updateProject(project.id, {
           scrapingTasks: updatedTasks,
-          status: projectModel.calculateProjectStatus(updatedTasks)
+          status: projectModel.calculateProjectStatus(updatedTasks),
         });
       }
     }
@@ -198,11 +201,11 @@ router.get("/taskPerformance", async (req, res) => {
     // Return only performance metrics
     res.json({
       message: "Successfully retrieved task performance data",
-      data: performanceData.map(task => ({
+      data: performanceData.map((task) => ({
         taskArn: task.taskArn,
         cpu: task.cpu,
         memory: task.memory,
-        status: task.status
+        status: task.status,
       })),
     });
   } catch (error) {
@@ -228,7 +231,7 @@ router.post("/startTask", async (req, res) => {
     res.json({
       message: "Task started successfully",
       taskId,
-      status: "Running"
+      status: "Running",
     });
   } catch (error) {
     logger.error("Error starting task:", error);
@@ -255,10 +258,10 @@ router.post("/stopTask", async (req, res) => {
     // Then stop the task in AWS ECS
     await ecsService.stopTask(taskId);
 
-    res.json({ 
+    res.json({
       message: "Task stopped successfully",
       taskId,
-      status: "Stopped"
+      status: "Stopped",
     });
   } catch (error) {
     logger.error("Error stopping task:", error);
@@ -284,7 +287,7 @@ router.post("/restartTask", async (req, res) => {
     res.json({
       message: "Task restarted successfully",
       taskId: newTask.taskArn,
-      status: "Running"
+      status: "Running",
     });
   } catch (error) {
     logger.error("Error restarting task:", error);
