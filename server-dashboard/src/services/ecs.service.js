@@ -5,6 +5,7 @@ const {
   RunTaskCommand,
   ListTasksCommand,
   DescribeTasksCommand,
+  StopTaskCommand,
 } = require("@aws-sdk/client-ecs");
 const {
   CloudWatchClient,
@@ -15,7 +16,6 @@ require("dotenv").config();
 
 class ECSService {
   constructor() {
-    // Load AWS credentials from environment variables
     const accessKeyId = process.env.REAL_ACCESS_KEY_ID;
     const secretAccessKey = process.env.REAL_SECRET_ACCESS_KEY;
 
@@ -35,10 +35,10 @@ class ECSService {
     this.cloudWatch = new CloudWatchClient(awsConfig);
 
     this.clusterName = "TestScrapingCluster";
+    this.serviceName = "test-scraping-service";
     this.taskDefinitionFamily = "test-scraping-task";
     this.subnetId = "subnet-0cef1fabb02085215";
 
-    // Log initialization but not the credentials
     logger.info("ECS Service initialized with credentials");
   }
 
@@ -114,18 +114,15 @@ class ECSService {
 
   async runTasks(taskCount, queryList) {
     try {
-      // Get or create task definition
       let taskDefinitionArn = await this.getLatestTaskDefinition();
       if (!taskDefinitionArn) {
         const taskDef = await this.createTaskDefinition();
         taskDefinitionArn = taskDef.taskDefinitionArn;
       }
 
-      // Distribute queries among tasks
       const queryDistribution = this.distributeQueries(queryList, taskCount);
       const tasks = [];
 
-      // Run tasks with their respective queries
       for (const queries of queryDistribution) {
         const command = new RunTaskCommand({
           cluster: this.clusterName,
@@ -164,88 +161,191 @@ class ECSService {
     }
   }
 
+  async stopTask(taskId) {
+    try {
+      const command = new StopTaskCommand({
+        cluster: this.clusterName,
+        task: taskId,
+        reason: "Stopped by user",
+      });
+
+      await this.client.send(command);
+      logger.info(`Task ${taskId} stopped successfully`);
+    } catch (error) {
+      logger.error(`Error stopping task ${taskId}:`, error);
+      throw error;
+    }
+  }
+
+  async restartTask(taskId) {
+    try {
+      // First get the task details
+      const describeTaskCommand = new DescribeTasksCommand({
+        cluster: this.clusterName,
+        tasks: [taskId],
+      });
+
+      const taskInfo = await this.client.send(describeTaskCommand);
+      if (!taskInfo.tasks || taskInfo.tasks.length === 0) {
+        throw new Error(`Task ${taskId} not found`);
+      }
+
+      const task = taskInfo.tasks[0];
+
+      // Stop the existing task
+      await this.stopTask(taskId);
+
+      // Start a new task with the same configuration
+      const command = new RunTaskCommand({
+        cluster: this.clusterName,
+        taskDefinition: task.taskDefinitionArn,
+        launchType: task.launchType,
+        networkConfiguration: task.networkConfiguration,
+        overrides: task.overrides,
+      });
+
+      const response = await this.client.send(command);
+      logger.info(`Task ${taskId} restarted successfully`);
+      return response.tasks[0];
+    } catch (error) {
+      logger.error(`Error restarting task ${taskId}:`, error);
+      throw error;
+    }
+  }
+
   async getTasksPerformance(startTime, endTime) {
     try {
-      // First, get all running tasks
       const listTasksCommand = new ListTasksCommand({
         cluster: this.clusterName,
       });
-      
+
       const tasksList = await this.client.send(listTasksCommand);
-      
+      logger.info("Tasks found:", JSON.stringify(tasksList, null, 2));
+
       if (!tasksList.taskArns || tasksList.taskArns.length === 0) {
+        logger.info("No tasks found in cluster");
         return [];
       }
 
-      // Get detailed task information
       const describeTasksCommand = new DescribeTasksCommand({
         cluster: this.clusterName,
         tasks: tasksList.taskArns,
       });
 
       const tasksInfo = await this.client.send(describeTasksCommand);
+      logger.info(`Found ${tasksInfo.tasks.length} tasks`);
 
-      // Get CloudWatch metrics for each task
-      const metricDataQueries = tasksInfo.tasks.map((task, index) => ([
-        {
-          Id: `cpu_${index}`,
-          MetricStat: {
-            Metric: {
-              Namespace: "AWS/ECS",
-              MetricName: "CPUUtilization",
-              Dimensions: [
-                { Name: "ClusterName", Value: this.clusterName },
-                { Name: "TaskId", Value: task.taskArn.split("/").pop() }
-              ]
+      const metricDataQueries = tasksInfo.tasks.flatMap((task, index) => {
+        const taskId = task.taskArn.split("/").pop();
+        logger.info(`Getting metrics for task ${taskId}`);
+
+        return [
+          {
+            Id: `cpu_${index}`,
+            MetricStat: {
+              Metric: {
+                Namespace: "AWS/ECS",
+                MetricName: "CPUUtilization",
+                Dimensions: [
+                  { Name: "ClusterName", Value: this.clusterName },
+                  { Name: "ServiceName", Value: this.serviceName },
+                  { Name: "TaskId", Value: taskId },
+                ],
+              },
+              Period: 60,
+              Stat: "Average",
             },
-            Period: 60,
-            Stat: "Average"
+            ReturnData: true,
           },
-          ReturnData: true
-        },
-        {
-          Id: `memory_${index}`,
-          MetricStat: {
-            Metric: {
-              Namespace: "AWS/ECS",
-              MetricName: "MemoryUtilization",
-              Dimensions: [
-                { Name: "ClusterName", Value: this.clusterName },
-                { Name: "TaskId", Value: task.taskArn.split("/").pop() }
-              ]
+          {
+            Id: `memory_${index}`,
+            MetricStat: {
+              Metric: {
+                Namespace: "AWS/ECS",
+                MetricName: "MemoryUtilization",
+                Dimensions: [
+                  { Name: "ClusterName", Value: this.clusterName },
+                  { Name: "ServiceName", Value: this.serviceName },
+                  { Name: "TaskId", Value: taskId },
+                ],
+              },
+              Period: 60,
+              Stat: "Average",
             },
-            Period: 60,
-            Stat: "Average"
+            ReturnData: true,
           },
-          ReturnData: true
-        }
-      ])).flat();
+        ];
+      });
+
+      logger.info(
+        "CloudWatch Query:",
+        JSON.stringify(metricDataQueries, null, 2)
+      );
 
       const metricsCommand = new GetMetricDataCommand({
         MetricDataQueries: metricDataQueries,
-        StartTime: startTime || new Date(Date.now() - 3600000), // Last hour if not specified
-        EndTime: endTime || new Date()
+        StartTime: startTime || new Date(Date.now() - 3600000),
+        EndTime: endTime || new Date(),
+        ScanBy: "TimestampDescending",
       });
 
+      logger.info("Fetching CloudWatch metrics...");
       const metricsData = await this.cloudWatch.send(metricsCommand);
+      logger.info(
+        `Got metrics data with ${metricsData.MetricDataResults.length} results`
+      );
+      logger.info(
+        "Metrics Data:",
+        JSON.stringify(metricsData.MetricDataResults, null, 2)
+      );
 
-      // Combine task info with metrics
-      return tasksInfo.tasks.map((task, index) => ({
-        taskId: task.taskArn.split("/").pop(),
-        status: task.lastStatus,
-        startedAt: task.startedAt,
-        stoppedAt: task.stoppedAt,
-        cpu: {
-          utilization: metricsData.MetricDataResults[index * 2],
-          timestamp: metricsData.MetricDataResults[index * 2].Timestamps
-        },
-        memory: {
-          utilization: metricsData.MetricDataResults[index * 2 + 1],
-          timestamp: metricsData.MetricDataResults[index * 2 + 1].Timestamps
-        }
-      }));
+      return tasksInfo.tasks.map((task, index) => {
+        const taskId = task.taskArn.split("/").pop();
+        const cpuData = metricsData.MetricDataResults[index * 2];
+        const memoryData = metricsData.MetricDataResults[index * 2 + 1];
+
+        logger.info(
+          `Task ${taskId} CPU data points: ${cpuData?.Values?.length || 0}`
+        );
+        logger.info(
+          `Task ${taskId} Memory data points: ${memoryData?.Values?.length || 0}`
+        );
+
+        const latestCPU = cpuData?.Values?.[0] || 0;
+        const latestMemory = memoryData?.Values?.[0] || 0;
+
+        return {
+          taskId,
+          taskArn: task.taskArn,
+          status: task.lastStatus,
+          startedAt: task.startedAt,
+          stoppedAt: task.stoppedAt,
+          cpu: {
+            current: latestCPU,
+            history: cpuData?.Values?.map((value, i) => ({
+              value,
+              timestamp: cpuData.Timestamps[i],
+            })) || [],
+          },
+          memory: {
+            current: latestMemory,
+            history: memoryData?.Values?.map((value, i) => ({
+              value,
+              timestamp: memoryData.Timestamps[i],
+            })) || [],
+          },
+          containers: task.containers?.map((container) => ({
+            name: container.name,
+            lastStatus: container.lastStatus,
+            image: container.image,
+            cpu: container.cpu,
+            memory: container.memory,
+          })) || [],
+        };
+      });
     } catch (error) {
       logger.error("Error getting tasks performance:", error);
+      logger.error("Error details:", error.stack);
       throw error;
     }
   }

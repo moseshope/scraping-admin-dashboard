@@ -66,7 +66,39 @@ const estimateService = {
       }
 
       const response = await api.get(`/dev/taskPerformance?${params.toString()}`);
-      return response.data.data;
+
+      // Transform the data to match the expected format
+      if (response.data.data) {
+        return response.data.data.map(task => ({
+          taskId: task.taskId,
+          taskArn: task.taskArn,
+          status: task.status,
+          startedAt: task.startedAt,
+          stoppedAt: task.stoppedAt,
+          cpu: {
+            current: task.cpu?.current || 0,
+            history: task.cpu?.history?.map(point => ({
+              value: point.value || 0,
+              timestamp: point.timestamp
+            })) || []
+          },
+          memory: {
+            current: task.memory?.current || 0,
+            history: task.memory?.history?.map(point => ({
+              value: point.value || 0,
+              timestamp: point.timestamp
+            })) || []
+          },
+          containers: task.containers?.map(container => ({
+            name: container.name,
+            lastStatus: container.lastStatus,
+            image: container.image,
+            cpu: container.cpu,
+            memory: container.memory
+          })) || []
+        }));
+      }
+      return [];
     } catch (error) {
       console.error("Error fetching task performance:", error);
       throw error;
@@ -95,6 +127,59 @@ const estimateService = {
 
     // Return cleanup function
     return () => clearInterval(pollInterval);
+  },
+
+  // Get task logs
+  getTaskLogs: async (taskId, startTime, endTime) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('taskId', taskId);
+      if (startTime) {
+        params.append('startTime', startTime.toISOString());
+      }
+      if (endTime) {
+        params.append('endTime', endTime.toISOString());
+      }
+
+      const response = await api.get(`/dev/taskLogs?${params.toString()}`);
+      return response.data.logs;
+    } catch (error) {
+      console.error("Error fetching task logs:", error);
+      throw error;
+    }
+  },
+
+  // Start task
+  startTask: async (taskId) => {
+    try {
+      const response = await api.post("/dev/startTask", { taskId });
+      return response.data;
+    } catch (error) {
+      console.error("Error starting task:", error);
+      throw error;
+    }
+  },
+
+  // Stop task
+  stopTask: async (taskId) => {
+    try {
+      const response = await api.post(`/dev/stopTask`, { taskId });
+      return response.data;
+    } catch (error) {
+      console.error("Error stopping task:", error);
+      throw error;
+    }
+  },
+
+  // Restart task
+  restartTask: async (taskId) => {
+    try {
+      const response = await api.post(`/dev/restartTask`, { taskId });
+      return response.data;
+    } catch (error) {
+      console.error("Error restarting task:", error);
+      throw error;
+    }
   }
 };
 
