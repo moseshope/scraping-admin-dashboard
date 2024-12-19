@@ -5,95 +5,26 @@ const estimateModel = require("../models/estimate.model");
 const ecsService = require("../services/ecs.service");
 const projectModel = require("../models/project.model");
 
-// Get all unique states
-router.get("/getStates", async (req, res) => {
+// Helper function to check task logs and determine status
+async function checkTaskLogsAndUpdateStatus(taskId, projectId, currentStatus) {
   try {
-    const states = await estimateModel.getUniqueStates();
-    res.json({ states });
+    const logs = await ecsService.getTaskLogs(taskId);
+    const isSuccessful = logs.some(log => log.includes("All estimates processed successfully"));
+    const hasFailed = logs.some(log => log.includes("error: "));
+
+    if (isSuccessful) {
+      await projectModel.updateTaskStatus(projectId, taskId, "Successful", "auto");
+      return "Successful";
+    } else if (hasFailed) {
+      await projectModel.updateTaskStatus(projectId, taskId, "Failed", "auto");
+      return "Failed";
+    }
+    return currentStatus;
   } catch (error) {
-    logger.error("Error getting states:", error);
-    res.status(500).json({ error: "Failed to get states" });
+    logger.error(`Error checking logs for task ${taskId}:`, error);
+    return currentStatus;
   }
-});
-
-// Get cities in a state
-router.get("/getCitiesInStates", async (req, res) => {
-  const { stateName } = req.query;
-
-  if (!stateName) {
-    return res.status(400).json({ error: "State name is required" });
-  }
-
-  try {
-    const cities = await estimateModel.getCitiesInState(stateName);
-    res.json({ cities });
-  } catch (error) {
-    logger.error("Error getting cities:", error);
-    res.status(500).json({ error: "Failed to get cities" });
-  }
-});
-
-// Get query IDs based on filters
-router.post("/getQueryIds", async (req, res) => {
-  const { scrapingMode, filter } = req.body;
-
-  try {
-    const ids = await estimateModel.getQueryIds(scrapingMode, filter);
-    res.json({ ids });
-  } catch (error) {
-    logger.error("Error getting query IDs:", error);
-    res.status(500).json({ error: "Failed to get query IDs" });
-  }
-});
-
-// Start scraping tasks
-router.post("/startScraping", async (req, res) => {
-  const { taskCount, queryList, startDate } = req.body;
-
-  if (
-    !taskCount ||
-    !Number.isInteger(Number(taskCount)) ||
-    Number(taskCount) <= 0
-  ) {
-    return res.status(400).json({ error: "Valid task count is required" });
-  }
-
-  if (!Array.isArray(queryList) || queryList.length === 0) {
-    return res
-      .status(400)
-      .json({ error: "Query list is required and must not be empty" });
-  }
-
-  if (!startDate) {
-    return res.status(400).json({ error: "Start date is required" });
-  }
-
-  try {
-    // Get or create task definition and run tasks with distributed queries
-    const tasks = await ecsService.runTasks(Number(taskCount), queryList);
-
-    // Return the tasks information
-    res.json({
-      message: `Successfully started ${tasks.length} scraping tasks`,
-      tasks: tasks.map((task) => ({
-        taskArn: task.taskArn,
-        taskDefinitionArn: task.taskDefinitionArn,
-        lastStatus: task.lastStatus,
-        createdAt: task.createdAt,
-        desiredStatus: task.desiredStatus,
-        group: task.group,
-        launchType: task.launchType,
-        containers: task.containers?.map((container) => ({
-          name: container.name,
-          lastStatus: container.lastStatus,
-        })),
-      })),
-    });
-  } catch (error) {
-    logger.error("Error starting scraping tasks:", error);
-    res.status(500).json({ error: "Failed to start scraping tasks" });
-  }
-});
+}
 
 // Get task performance metrics
 router.get("/taskPerformance", async (req, res) => {
@@ -113,12 +44,6 @@ router.get("/taskPerformance", async (req, res) => {
 
     // Get all projects to get task ARNs
     const projects = await projectModel.getProjects();
-    const allTaskArns = projects.reduce((arns, project) => {
-      if (project.scrapingTasks) {
-        arns.push(...project.scrapingTasks.map(task => task.taskArn));
-      }
-      return arns;
-    }, []);
 
     // Get performance data for all tasks
     const performanceData = await ecsService.getTasksPerformance(start, end);
@@ -127,37 +52,46 @@ router.get("/taskPerformance", async (req, res) => {
     for (const project of projects) {
       if (!project.scrapingTasks) continue;
 
-      let statusUpdated = false;
-      const updatedTasks = project.scrapingTasks.map(projectTask => {
+      const updatedTasks = await Promise.all(project.scrapingTasks.map(async projectTask => {
         const taskData = performanceData.find(t => t.taskArn === projectTask.taskArn);
+        let newStatus = projectTask.lastStatus;
+        let controller = projectTask.controller || 'auto';
+
         if (taskData) {
-          statusUpdated = true;
-          let newStatus;
           switch (taskData.status) {
             case 'RUNNING':
               newStatus = 'Running';
               break;
             case 'STOPPED':
-              // If task was running before and now stopped, mark as successful
-              newStatus = projectTask.lastStatus === 'Running' ? 'Successful' : projectTask.lastStatus;
+              // Always check logs for stopped tasks
+              const logs = await ecsService.getTaskLogs(projectTask.taskArn);
+              if (logs.some(log => log.includes("All estimates processed successfully"))) {
+                newStatus = 'Successful';
+                controller = 'auto';
+              } else if (logs.some(log => log.includes("error: "))) {
+                newStatus = 'Failed';
+                controller = 'auto';
+              }
               break;
             case 'FAILED':
               newStatus = 'Failed';
               break;
-            default:
-              newStatus = projectTask.lastStatus;
+            case 'PROVISIONING':
+              newStatus = 'Running';
+              break;
           }
-          return { ...projectTask, lastStatus: newStatus };
         }
-        return projectTask;
-      });
 
-      if (statusUpdated) {
-        await projectModel.updateProject(project.id, {
-          scrapingTasks: updatedTasks,
-          status: projectModel.calculateProjectStatus(updatedTasks)
-        });
-      }
+        // Always update task status in database
+        await projectModel.updateTaskStatus(project.id, projectTask.taskArn, newStatus, controller);
+        return { ...projectTask, lastStatus: newStatus, controller };
+      }));
+
+      // Update project with new task statuses
+      await projectModel.updateProject(project.id, {
+        scrapingTasks: updatedTasks,
+        status: projectModel.calculateProjectStatus(updatedTasks)
+      });
     }
 
     // Return only performance metrics
@@ -215,19 +149,23 @@ router.get("/taskLogs/:taskId", async (req, res) => {
 
   try {
     const logs = await ecsService.getTaskLogs(taskId);
-    
-    // Check if logs contain success message
-    const isSuccessful = logs.some(log => log.includes("All queries success"));
-    
-    // If task was stopped and logs indicate success, update status
+    const isSuccessful = logs.some(log => log.includes("All estimates processed successfully"));
+    const hasFailed = logs.some(log => log.includes("error: "));
+
+    let status = "Stopped";
     if (isSuccessful) {
-      await projectModel.updateTaskStatus(projectId, taskId, "Successful");
+      status = "Successful";
+      await projectModel.updateTaskStatus(projectId, taskId, status, "auto");
+    } else if (hasFailed) {
+      status = "Failed";
+      await projectModel.updateTaskStatus(projectId, taskId, status, "auto");
     }
 
     res.json({
       message: "Successfully retrieved task logs",
       logs,
-      isSuccessful
+      isSuccessful,
+      status
     });
   } catch (error) {
     logger.error("Error getting task logs:", error);
@@ -248,7 +186,7 @@ router.post("/startTask", async (req, res) => {
   }
 
   try {
-    await projectModel.updateTaskStatus(projectId, taskId, "Running");
+    await projectModel.updateTaskStatus(projectId, taskId, "Running", "auto");
     res.json({
       message: "Task started successfully",
       taskId,
@@ -276,13 +214,23 @@ router.post("/stopTask", async (req, res) => {
     // First stop the task in AWS ECS
     await ecsService.stopTask(taskId);
 
-    // Get task logs to check if it completed successfully
+    // Check logs to determine final status
     const logs = await ecsService.getTaskLogs(taskId);
-    const isSuccessful = logs.some(log => log.includes("All queries success"));
+    const isSuccessful = logs.some(log => log.includes("All estimates processed successfully"));
+    const hasFailed = logs.some(log => log.includes("error: "));
 
-    // Update task status based on logs
-    const status = isSuccessful ? "Successful" : "Stopped";
-    await projectModel.updateTaskStatus(projectId, taskId, status);
+    let status = "Stopped";
+    let controller = "manual";
+
+    if (isSuccessful) {
+      status = "Successful";
+      controller = "auto";
+    } else if (hasFailed) {
+      status = "Failed";
+      controller = "auto";
+    }
+
+    await projectModel.updateTaskStatus(projectId, taskId, status, controller);
 
     res.json({ 
       message: "Task stopped successfully",
@@ -309,7 +257,7 @@ router.post("/restartTask", async (req, res) => {
 
   try {
     const newTask = await ecsService.restartTask(taskId);
-    await projectModel.updateTaskStatus(projectId, taskId, "Running");
+    await projectModel.updateTaskStatus(projectId, taskId, "Running", "auto");
     res.json({
       message: "Task restarted successfully",
       taskId: newTask.taskArn,

@@ -77,6 +77,7 @@ class ProjectModel {
           desiredStatus: String(task.desiredStatus || ''),
           group: String(task.group || ''),
           launchType: String(task.launchType || ''),
+          controller: String(task.controller || 'auto'),
           containers: Array.isArray(task.containers) ? task.containers.map(container => ({
             name: String(container.name || ''),
             lastStatus: String(container.lastStatus || ''),
@@ -183,7 +184,7 @@ class ProjectModel {
     }
   }
 
-  async updateTaskStatus(projectId, taskArn, newStatus) {
+  async updateTaskStatus(projectId, taskArn, newStatus, controller = 'auto') {
     try {
       // Get current project
       const project = await this.getProjectById(projectId);
@@ -197,6 +198,7 @@ class ProjectModel {
           return {
             ...task,
             lastStatus: newStatus === "STOPPED" ? "Stopped" : newStatus,
+            controller: controller
           };
         }
         return task;
