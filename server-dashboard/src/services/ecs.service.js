@@ -11,6 +11,11 @@ const {
   CloudWatchClient,
   GetMetricDataCommand,
 } = require("@aws-sdk/client-cloudwatch");
+const {
+  CloudWatchLogsClient,
+  GetLogEventsCommand,
+  DescribeLogStreamsCommand,
+} = require("@aws-sdk/client-cloudwatch-logs");
 const logger = require("../utils/logger");
 require("dotenv").config();
 
@@ -33,13 +38,54 @@ class ECSService {
 
     this.client = new ECSClient(awsConfig);
     this.cloudWatch = new CloudWatchClient(awsConfig);
+    this.cloudWatchLogs = new CloudWatchLogsClient(awsConfig);
 
     this.clusterName = "TestScrapingCluster";
     this.serviceName = "test-scraping-service";
     this.taskDefinitionFamily = "test-scraping-task";
     this.subnetId = "subnet-0cef1fabb02085215";
+    this.logGroupName = "/ecs/scraping-module";
 
     logger.info("ECS Service initialized with credentials");
+  }
+
+  async getTaskLogs(taskId) {
+    try {
+      // Extract the task ID from the ARN if it's a full ARN
+      const taskIdShort = taskId.includes('/') ? taskId.split('/').pop() : taskId;
+
+      // Get the log stream for this task
+      const describeStreamsCommand = new DescribeLogStreamsCommand({
+        logGroupName: this.logGroupName,
+        logStreamNamePrefix: `ecs/test-scraping-container/${taskIdShort}`,
+        orderBy: 'LogStreamName',
+        descending: true,
+        limit: 1
+      });
+
+      const streams = await this.cloudWatchLogs.send(describeStreamsCommand);
+      
+      if (!streams.logStreams || streams.logStreams.length === 0) {
+        logger.warn(`No log streams found for task ${taskIdShort}`);
+        return [];
+      }
+
+      const logStreamName = streams.logStreams[0].logStreamName;
+
+      // Get the log events
+      const getLogsCommand = new GetLogEventsCommand({
+        logGroupName: this.logGroupName,
+        logStreamName: logStreamName,
+        startFromHead: true,
+        limit: 1000
+      });
+
+      const logEvents = await this.cloudWatchLogs.send(getLogsCommand);
+      return logEvents.events.map(event => event.message);
+    } catch (error) {
+      logger.error(`Error getting logs for task ${taskId}:`, error);
+      throw error;
+    }
   }
 
   async createTaskDefinition() {
@@ -57,7 +103,7 @@ class ECSService {
           logConfiguration: {
             logDriver: "awslogs",
             options: {
-              "awslogs-group": "/ecs/scraping-module",
+              "awslogs-group": this.logGroupName,
               "awslogs-region": "us-west-1",
               "awslogs-stream-prefix": "ecs",
             },

@@ -1,6 +1,20 @@
 import api from "./api";
 
 const estimateService = {
+  // Get task logs
+  getTaskLogs: async (taskId, projectId) => {
+    try {
+      // Ensure taskId and projectId are properly encoded
+      const encodedTaskId = encodeURIComponent(taskId);
+      const encodedProjectId = encodeURIComponent(projectId);
+      const response = await api.get(`/dev/taskLogs/${encodedTaskId}?projectId=${encodedProjectId}`);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching task logs:", error);
+      throw error;
+    }
+  },
+
   // Get tasks by project ID
   getTasksByProjectId: async (projectId) => {
     try {
@@ -112,50 +126,6 @@ const estimateService = {
       return [];
     } catch (error) {
       console.error("Error fetching task performance:", error);
-      throw error;
-    }
-  },
-
-  // Poll task performance metrics (for real-time updates)
-  pollTaskPerformance: (callback, interval = 30000) => {
-    const poll = async () => {
-      try {
-        // Get last hour of metrics by default
-        const endTime = new Date();
-        const startTime = new Date(endTime - 3600000); // 1 hour ago
-        const data = await estimateService.getTaskPerformance(startTime, endTime);
-        callback(data);
-      } catch (error) {
-        console.error("Error polling task performance:", error);
-      }
-    };
-
-    // Initial poll
-    poll();
-
-    // Set up interval
-    const pollInterval = setInterval(poll, interval);
-
-    // Return cleanup function
-    return () => clearInterval(pollInterval);
-  },
-
-  // Get task logs
-  getTaskLogs: async (taskId, startTime, endTime) => {
-    try {
-      const params = new URLSearchParams();
-      params.append('taskId', taskId);
-      if (startTime) {
-        params.append('startTime', startTime.toISOString());
-      }
-      if (endTime) {
-        params.append('endTime', endTime.toISOString());
-      }
-
-      const response = await api.get(`/dev/taskLogs?${params.toString()}`);
-      return response.data.logs;
-    } catch (error) {
-      console.error("Error fetching task logs:", error);
       throw error;
     }
   },

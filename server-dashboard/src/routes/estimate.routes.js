@@ -5,30 +5,6 @@ const estimateModel = require("../models/estimate.model");
 const ecsService = require("../services/ecs.service");
 const projectModel = require("../models/project.model");
 
-// Get tasks by project ID
-router.get("/getTasksByProjectId/:projectId", async (req, res) => {
-  const { projectId } = req.params;
-
-  if (!projectId) {
-    return res.status(400).json({ error: "Project ID is required" });
-  }
-
-  try {
-    const project = await projectModel.getProjectById(projectId);
-    if (!project) {
-      return res.status(404).json({ error: "Project not found" });
-    }
-
-    res.json({
-      message: "Successfully retrieved project tasks",
-      tasks: project.scrapingTasks || [],
-    });
-  } catch (error) {
-    logger.error(`Error getting tasks for project ${projectId}:`, error);
-    res.status(500).json({ error: "Failed to get project tasks" });
-  }
-});
-
 // Get all unique states
 router.get("/getStates", async (req, res) => {
   try {
@@ -92,19 +68,6 @@ router.post("/startScraping", async (req, res) => {
     return res.status(400).json({ error: "Start date is required" });
   }
 
-  // Check if start date is today
-  const today = new Date();
-  const startDateObj = new Date(startDate);
-  const isToday =
-    today.toISOString().split("T")[0] ===
-    startDateObj.toISOString().split("T")[0];
-
-  if (!isToday) {
-    return res
-      .status(400)
-      .json({ error: "Start date must be today for immediate task execution" });
-  }
-
   try {
     // Get or create task definition and run tasks with distributed queries
     const tasks = await ecsService.runTasks(Number(taskCount), queryList);
@@ -152,7 +115,7 @@ router.get("/taskPerformance", async (req, res) => {
     const projects = await projectModel.getProjects();
     const allTaskArns = projects.reduce((arns, project) => {
       if (project.scrapingTasks) {
-        arns.push(...project.scrapingTasks.map((task) => task.taskArn));
+        arns.push(...project.scrapingTasks.map(task => task.taskArn));
       }
       return arns;
     }, []);
@@ -165,22 +128,21 @@ router.get("/taskPerformance", async (req, res) => {
       if (!project.scrapingTasks) continue;
 
       let statusUpdated = false;
-      const updatedTasks = project.scrapingTasks.map((projectTask) => {
-        const taskData = performanceData.find(
-          (t) => t.taskArn === projectTask.taskArn
-        );
+      const updatedTasks = project.scrapingTasks.map(projectTask => {
+        const taskData = performanceData.find(t => t.taskArn === projectTask.taskArn);
         if (taskData) {
           statusUpdated = true;
           let newStatus;
           switch (taskData.status) {
-            case "RUNNING":
-              newStatus = "Running";
+            case 'RUNNING':
+              newStatus = 'Running';
               break;
-            case "STOPPED":
-              newStatus = "Stopped";
+            case 'STOPPED':
+              // If task was running before and now stopped, mark as successful
+              newStatus = projectTask.lastStatus === 'Running' ? 'Successful' : projectTask.lastStatus;
               break;
-            case "FAILED":
-              newStatus = "Failed";
+            case 'FAILED':
+              newStatus = 'Failed';
               break;
             default:
               newStatus = projectTask.lastStatus;
@@ -193,7 +155,7 @@ router.get("/taskPerformance", async (req, res) => {
       if (statusUpdated) {
         await projectModel.updateProject(project.id, {
           scrapingTasks: updatedTasks,
-          status: projectModel.calculateProjectStatus(updatedTasks),
+          status: projectModel.calculateProjectStatus(updatedTasks)
         });
       }
     }
@@ -201,16 +163,75 @@ router.get("/taskPerformance", async (req, res) => {
     // Return only performance metrics
     res.json({
       message: "Successfully retrieved task performance data",
-      data: performanceData.map((task) => ({
+      data: performanceData.map(task => ({
         taskArn: task.taskArn,
         cpu: task.cpu,
         memory: task.memory,
-        status: task.status,
+        status: task.status
       })),
     });
   } catch (error) {
     logger.error("Error getting task performance:", error);
     res.status(500).json({ error: "Failed to get task performance data" });
+  }
+});
+
+// Get tasks by project ID
+router.get("/getTasksByProjectId/:projectId", async (req, res) => {
+  const { projectId } = req.params;
+
+  if (!projectId) {
+    return res.status(400).json({ error: "Project ID is required" });
+  }
+
+  try {
+    const project = await projectModel.getProjectById(projectId);
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    res.json({
+      message: "Successfully retrieved project tasks",
+      tasks: project.scrapingTasks || [],
+    });
+  } catch (error) {
+    logger.error(`Error getting tasks for project ${projectId}:`, error);
+    res.status(500).json({ error: "Failed to get project tasks" });
+  }
+});
+
+// Get task logs and check for success
+router.get("/taskLogs/:taskId", async (req, res) => {
+  const { taskId } = req.params;
+  const { projectId } = req.query;
+
+  if (!taskId) {
+    return res.status(400).json({ error: "Task ID is required" });
+  }
+
+  if (!projectId) {
+    return res.status(400).json({ error: "Project ID is required" });
+  }
+
+  try {
+    const logs = await ecsService.getTaskLogs(taskId);
+    
+    // Check if logs contain success message
+    const isSuccessful = logs.some(log => log.includes("All queries success"));
+    
+    // If task was stopped and logs indicate success, update status
+    if (isSuccessful) {
+      await projectModel.updateTaskStatus(projectId, taskId, "Successful");
+    }
+
+    res.json({
+      message: "Successfully retrieved task logs",
+      logs,
+      isSuccessful
+    });
+  } catch (error) {
+    logger.error("Error getting task logs:", error);
+    res.status(500).json({ error: "Failed to get task logs" });
   }
 });
 
@@ -231,7 +252,7 @@ router.post("/startTask", async (req, res) => {
     res.json({
       message: "Task started successfully",
       taskId,
-      status: "Running",
+      status: "Running"
     });
   } catch (error) {
     logger.error("Error starting task:", error);
@@ -252,16 +273,21 @@ router.post("/stopTask", async (req, res) => {
   }
 
   try {
-    // First update the task status in the project table
-    await projectModel.updateTaskStatus(projectId, taskId, "Stopped");
-
-    // Then stop the task in AWS ECS
+    // First stop the task in AWS ECS
     await ecsService.stopTask(taskId);
 
-    res.json({
+    // Get task logs to check if it completed successfully
+    const logs = await ecsService.getTaskLogs(taskId);
+    const isSuccessful = logs.some(log => log.includes("All queries success"));
+
+    // Update task status based on logs
+    const status = isSuccessful ? "Successful" : "Stopped";
+    await projectModel.updateTaskStatus(projectId, taskId, status);
+
+    res.json({ 
       message: "Task stopped successfully",
       taskId,
-      status: "Stopped",
+      status
     });
   } catch (error) {
     logger.error("Error stopping task:", error);
@@ -282,80 +308,16 @@ router.post("/restartTask", async (req, res) => {
   }
 
   try {
-    // First get the project to get task details
-    const project = await projectModel.getProjectById(projectId);
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
-    }
-
-    // Find the task in the project
-    const task = project.scrapingTasks.find((t) => t.taskArn === taskId);
-    if (!task) {
-      throw new Error(`Task ${taskId} not found in project ${projectId}`);
-    }
-
-    // Stop the existing task if it's running
-    try {
-      await ecsService.stopTask(taskId);
-    } catch (error) {
-      logger.warn(
-        `Could not stop task ${taskId}, might already be stopped:`,
-        error
-      );
-    }
-
-    // Start a new task with the same configuration
     const newTask = await ecsService.restartTask(taskId);
-
-    // Update the task ARN in the project
-    const updatedTasks = project.scrapingTasks.map((t) => {
-      if (t.taskArn === taskId) {
-        return {
-          ...t,
-          taskArn: newTask.taskArn,
-          lastStatus: "Running",
-        };
-      }
-      return t;
-    });
-
-    // Update project with new task ARN and status
-    await projectModel.updateProject(projectId, {
-      scrapingTasks: updatedTasks,
-      status: projectModel.calculateProjectStatus(updatedTasks),
-    });
-
+    await projectModel.updateTaskStatus(projectId, taskId, "Running");
     res.json({
       message: "Task restarted successfully",
       taskId: newTask.taskArn,
-      status: "Running",
+      status: "Running"
     });
   } catch (error) {
     logger.error("Error restarting task:", error);
     res.status(500).json({ error: "Failed to restart task" });
-  }
-});
-
-// Get task logs
-router.get("/taskLogs", async (req, res) => {
-  const { taskId, startTime, endTime } = req.query;
-
-  if (!taskId) {
-    return res.status(400).json({ error: "Task ID is required" });
-  }
-
-  try {
-    const start = startTime ? new Date(startTime) : undefined;
-    const end = endTime ? new Date(endTime) : undefined;
-
-    const logs = await ecsService.getTaskLogs(taskId, start, end);
-    res.json({
-      message: "Successfully retrieved task logs",
-      logs,
-    });
-  } catch (error) {
-    logger.error("Error getting task logs:", error);
-    res.status(500).json({ error: "Failed to get task logs" });
   }
 });
 

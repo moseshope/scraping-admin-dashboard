@@ -13,6 +13,7 @@
   "description": "Backend server for the scraping admin dashboard with JWT authentication",
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.712.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.714.0",
     "@aws-sdk/client-dynamodb": "^3.699.0",
     "@aws-sdk/client-ecs": "^3.708.0",
     "@aws-sdk/credential-providers": "^3.699.0",

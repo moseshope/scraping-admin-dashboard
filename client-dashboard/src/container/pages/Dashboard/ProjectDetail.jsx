@@ -11,6 +11,10 @@ import {
   AppBar,
   Alert,
   Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import { DataGrid, gridClasses } from '@mui/x-data-grid';
 import {
@@ -18,6 +22,7 @@ import {
   PlayArrow as PlayArrowIcon,
   Stop as StopIcon,
   Refresh as RefreshIcon,
+  Article as ArticleIcon,
 } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -44,6 +49,7 @@ const ProjectDetail = () => {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
+  const [logsDialog, setLogsDialog] = useState({ open: false, logs: [], taskId: null });
 
   const showNotification = (message, severity = 'info') => {
     setNotification({ open: true, message, severity });
@@ -51,6 +57,27 @@ const ProjectDetail = () => {
 
   const handleCloseNotification = () => {
     setNotification({ ...notification, open: false });
+  };
+
+  const handleViewLogs = async (taskId) => {
+    try {
+      setActionLoading(true);
+      const response = await estimateService.getTaskLogs(taskId, projectId);
+      setLogsDialog({
+        open: true,
+        logs: response.logs,
+        taskId,
+      });
+    } catch (error) {
+      console.error('Error fetching task logs:', error);
+      showNotification('Failed to fetch task logs', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCloseLogsDialog = () => {
+    setLogsDialog({ open: false, logs: [], taskId: null });
   };
 
   const getStatusColor = (status) => {
@@ -73,21 +100,49 @@ const ProjectDetail = () => {
 
   const renderActionButtons = (status, taskId) => {
     const normalizedStatus = status?.toUpperCase();
+    const buttons = [];
+
+    // View Logs button is always visible
+    buttons.push(
+      <Button
+        key="logs"
+        startIcon={<ArticleIcon />}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleViewLogs(taskId);
+        }}
+        disabled={actionLoading}
+        color="info"
+        variant="contained"
+        size="small"
+        sx={{ mr: 1 }}
+      >
+        View Logs
+      </Button>
+    );
+
+    // Add action buttons based on status
     switch (normalizedStatus) {
       case 'RUNNING':
-        return (
-          <ButtonGroup variant="contained" size="small">
+        buttons.push(
+          <ButtonGroup key="running-actions" variant="contained" size="small">
             <Button
               startIcon={<StopIcon />}
               color="error"
-              onClick={() => handleStop(taskId)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleStop(taskId);
+              }}
               disabled={actionLoading}
             >
               Stop
             </Button>
             <Button
               startIcon={<RefreshIcon />}
-              onClick={() => handleRestart(taskId)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRestart(taskId);
+              }}
               disabled={actionLoading}
               color="primary"
             >
@@ -95,21 +150,28 @@ const ProjectDetail = () => {
             </Button>
           </ButtonGroup>
         );
+        break;
       case 'STOPPED':
       case 'FAILED':
-        return (
-          <ButtonGroup variant="contained" size="small">
+        buttons.push(
+          <ButtonGroup key="stopped-actions" variant="contained" size="small">
             <Button
               startIcon={<PlayArrowIcon />}
               color="success"
-              onClick={() => handleStart(taskId)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleStart(taskId);
+              }}
               disabled={actionLoading}
             >
               Start
             </Button>
             <Button
               startIcon={<RefreshIcon />}
-              onClick={() => handleRestart(taskId)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRestart(taskId);
+              }}
               disabled={actionLoading}
               color="primary"
             >
@@ -117,12 +179,16 @@ const ProjectDetail = () => {
             </Button>
           </ButtonGroup>
         );
-      case 'SUCCESSFUL':
-      case 'PROVISIONING':
-        return null;
+        break;
       default:
-        return null;
+        break;
     }
+
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        {buttons}
+      </Box>
+    );
   };
 
   const updateTasksAndPerformance = async () => {
@@ -230,7 +296,7 @@ const ProjectDetail = () => {
     {
       field: 'actions',
       headerName: 'Actions',
-      width: 200,
+      width: 300,
       renderCell: (params) => renderActionButtons(params.row.status, params.row.taskArn),
     },
   ];
@@ -393,6 +459,29 @@ const ProjectDetail = () => {
             </Box>
           </Paper>
         )}
+
+        <Dialog
+          open={logsDialog.open}
+          onClose={handleCloseLogsDialog}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>Task Logs - {logsDialog.taskId}</DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2, maxHeight: 400, overflow: 'auto' }}>
+              {logsDialog.logs.map((log, index) => (
+                <Typography key={index} variant="body2" sx={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+                  {log}
+                </Typography>
+              ))}
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseLogsDialog} color="primary">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Snackbar
           open={notification.open}
